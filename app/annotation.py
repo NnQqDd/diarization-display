@@ -158,16 +158,19 @@ def _clean_speaker(value: Any) -> str:
 
 
 def segment_from_payload(payload: Any) -> Segment:
-    """Build a Segment from a JSON object, accepting both the DiseService shape
-    (float seconds, integer speaker) and the UI shape (hh:mm:ss strings)."""
+    """Build a Segment from a JSON object.
+
+    Accepts both shapes a segment arrives in: float seconds with an integer
+    speaker, as a dataset file parses into, and the hh:mm:ss strings the editor
+    sends back."""
     if not isinstance(payload, dict):
         raise AnnotationError("segment must be an object")
 
     if "start" not in payload or "end" not in payload:
         raise AnnotationError("segment needs both 'start' and 'end'")
 
-    # The task only asks to show a transcript when the service supplies one, so
-    # accept any of the three keys it might arrive under.
+    # A transcript is optional and has been spelled three different ways over
+    # the life of this format; accept any of them.
     text = ""
     for key in ("transcript", "text", "transcription"):
         if payload.get(key):

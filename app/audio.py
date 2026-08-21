@@ -1,9 +1,9 @@
 """Audio probing.
 
 Cut down from ``diarization-annotate/app/audio.py``: this app never sends audio
-anywhere, so the 16 kHz decode that exists there for DiseService is gone and
-only the measuring half remains. All it needs to know about a file is how long
-it is -- that is the bound every segment is validated against.
+anywhere, so the resampling half is gone and only the measuring half remains.
+All it needs to know about a file is how long it is -- that is the bound every
+segment is validated against.
 
 Without ffmpeg it can still measure a WAV from its own header, which is why an
 uploaded pair is not simply refused on a machine that has no ffmpeg.

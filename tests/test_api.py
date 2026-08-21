@@ -65,6 +65,7 @@ def test_opening_an_entry_gives_the_segments_and_the_sidecar(client, uploaded):
     body = client.get(f"/api/entries/{uploaded}").json()
     assert [s["speaker"] for s in body["segments"]] == ["speaker_0", "speaker_1"]
     assert body["segments"][0]["text"] == "hello there"
+    # The sidecar goes out as it is on disk, unknown keys and all.
     assert body["meta"]["diarizer"] == "pyannote"
     assert body["problems"] == []
 

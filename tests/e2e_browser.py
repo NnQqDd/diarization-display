@@ -29,6 +29,51 @@ problems: list[str] = []
 console_errors: list[str] = []
 
 
+def refuse(reason: str) -> None:
+    print(f"REFUSING TO RUN: {reason}", file=sys.stderr)
+    sys.exit(2)
+
+
+def guard() -> None:
+    """Prove this is a throwaway dataset before touching anything.
+
+    This suite edits and deletes entries. Pointing it at real work would
+    destroy it, and the ways that happens are mundane: a stale server already
+    holding the port, a forgotten ``E2E_DATASET``, a copy-pasted command. So
+    nothing opens a browser until the *server* has confirmed which folder it is
+    serving and that folder is carrying this suite's fixtures.
+    """
+    import json
+    import urllib.error
+    import urllib.request
+
+    try:
+        with urllib.request.urlopen(f"{UI}/api/config", timeout=10) as response:
+            config = json.load(response)
+    except (urllib.error.URLError, OSError, ValueError) as exc:
+        refuse(f"no server answering at {UI} ({exc})")
+
+    serving = Path(config["dataset"]["path"]).resolve()
+    expected = DATASET.resolve()
+    if serving != expected:
+        refuse(
+            f"the server at {UI} is serving {serving}, not {expected}.\n"
+            "  Something else is on that port. Stop it, or use another PORT."
+        )
+
+    # Fixtures, not somebody's corpus: `mixed` is edited and `orphan` deleted.
+    missing = [name for name in ("mixed.txt", "orphan.txt")
+               if not (expected / name).is_file()]
+    if missing:
+        refuse(
+            f"{expected} is missing {', '.join(missing)} — see this file's header.\n"
+            "  Never point this suite at a dataset you care about."
+        )
+
+
+guard()
+
+
 def check(name, condition, detail=""):
     print(f"[{'PASS' if condition else 'FAIL'}] {name}" + (f" — {detail}" if not condition and detail else ""))
     if not condition:
@@ -36,7 +81,14 @@ def check(name, condition, detail=""):
 
 
 def open_entry(page, stem, timeout=60_000):
+    """Click an entry and wait until *that* entry is the one on screen.
+
+    Waiting for "the table has rows" is not enough: the entry opened before
+    this one already satisfies it, so the checks would read the previous
+    annotation. The list marks the open row, so that is what to wait for.
+    """
     page.click(f'tr[data-stem="{stem}"]')
+    page.wait_for_selector(f'tr[data-stem="{stem}"].is-open', timeout=timeout)
     page.wait_for_selector("#segmentsCard:not([hidden])", timeout=timeout)
     page.wait_for_function(
         "() => document.getElementById('segmentsBody').rows.length > 0", timeout=timeout
@@ -61,9 +113,13 @@ with sync_playwright() as playwright:
         "#entriesBody tr", "rows => rows.map(r => r.dataset.stem)")
     check("the dataset is listed", len(rows) > 0, str(rows))
     check("the entry with no audio is flagged",
-          page.locator('tr[data-stem="orphan"] .tag.bad').count() == 1)
-    check("the shelf-backed entry says where its audio came from",
-          "from audios" in page.inner_text('tr[data-stem="mixed"] .col-audio'))
+          "missing" in page.inner_text('tr[data-stem="orphan"] .col-audio'),
+          page.inner_text('tr[data-stem="orphan"] .col-audio'))
+    # A playable entry says nothing: which folder its audio came out of is not
+    # something anyone can act on, so the column is only for the exception.
+    check("a playable entry is not labelled at all",
+          page.inner_text('tr[data-stem="mixed"] .col-audio').strip() == "",
+          repr(page.inner_text('tr[data-stem="mixed"] .col-audio')))
     check("the annotator is on the row",
           "abc12345" in page.inner_text('tr[data-stem="mixed"] .col-annotator'),
           page.inner_text('tr[data-stem="mixed"] .col-annotator'))
@@ -79,10 +135,13 @@ with sync_playwright() as playwright:
     page.wait_for_timeout(200)
 
     # --- an entry whose audio lives on the shelf --------------------------
+    check("this entry keeps no audio of its own",
+          not list(DATASET.glob("mixed.*"))[0].parent.joinpath("mixed.wav").exists())
+    served = page.request.get(f"{UI}/api/entries/mixed/audio")
+    check("and it is served anyway, from the audios folder",
+          served.status == 200 and served.body()[:4] == b"RIFF", str(served.status))
+
     open_entry(page, "mixed")
-    check("its audio was found in the audios folder",
-          "audios folder" in page.inner_text("#audioSourcePill"),
-          page.inner_text("#audioSourcePill"))
     page.wait_for_function("() => document.getElementById('waveLoading').hidden",
                            timeout=60_000)
     check("the waveform decoded it",

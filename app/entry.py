@@ -127,7 +127,6 @@ class Entry:
             "hasMeta": self.meta_path is not None,
             "metaError": self.meta_error,
             "derPercent": der.get("derPercent"),
-            "diarizer": self.meta.get("diarizer"),
             "annotator": {
                 "user": annotator.get("user"),
                 "clientId": annotator.get("clientId"),

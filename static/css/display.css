@@ -50,7 +50,6 @@ table.entries td { vertical-align: middle; }
   color: var(--text-dim);
   white-space: nowrap;
 }
-.tag.ok      { color: var(--good); border-color: rgba(63,185,80,.35); }
 .tag.warn    { color: var(--warn); border-color: rgba(210,153,34,.35); }
 .tag.bad     { color: var(--bad);  border-color: rgba(248,81,73,.35); }
 

@@ -46,16 +46,16 @@ export class SegmentTable {
     this.selectedId = null;
     this.playingId = null;
     this.isPlaying = false;
-    this.serviceHasTranscript = false;
+    this.hasTranscript = false;
 
     this._bind();
   }
 
   /* ---------------------------------------------------------------- state */
 
-  setData(segments, { serviceHasTranscript = false } = {}) {
+  setData(segments, { hasTranscript = false } = {}) {
     this.segments = segments;
-    this.serviceHasTranscript = serviceHasTranscript;
+    this.hasTranscript = hasTranscript;
     this.render();
   }
 
@@ -124,12 +124,10 @@ export class SegmentTable {
       : '';
 
     if (this.textHeadEl) {
-      this.textHeadEl.textContent = this.serviceHasTranscript
+      this.textHeadEl.textContent = this.hasTranscript
         ? 'Transcript'
-        : 'Transcript (none returned)';
-      this.textHeadEl.title = this.serviceHasTranscript
-        ? 'Transcript returned by DiseService — editable'
-        : 'DiseService returned no transcript for this audio; type one here';
+        : 'Transcript (none yet)';
+      this.textHeadEl.title = 'Optional, and editable — type one here';
     }
 
     this.setSelected(this.selectedId);

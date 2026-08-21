@@ -50,16 +50,21 @@ annotation beside it is a leftover and is not listed.
 
 ### Finding the audio
 
-`dataset/` first, then `audios/`, then nothing:
+Automatic, and not something the screen talks about: there is one dataset
+folder and one audio folder, both settled in `.env` and printed by `run.sh`, so
+*where* a recording was found changes nothing anyone can act on. The UI says
+only when there is no recording at all. The lookup is `dataset/` first, then
+`audios/`, then nothing:
 
 1. **`dataset/<stem>.<ext>`** — an entry filed from an upload keeps its own copy.
 2. **`audios/`** — an entry made with **Randomize audio** does not: the
    annotation UI leaves those files where they are and names the entry after
    one, so the audio is found by cleaning each shelf filename into a stem the
    same way that app did. `audios/meeting 01.wav` backs `meeting_01`.
-3. **Nothing** — the row says `missing` and the entry still opens. Times are
-   the work; without the sound you can still read, retime and delete them,
-   validated against the length recorded in the sidecar.
+3. **Nothing** — the row is tagged `missing`, the only case the list marks,
+   and the entry still opens. Times are the work; without the sound you can
+   still read, retime and delete them, validated against the length recorded in
+   the sidecar.
 
 A copy in `dataset/` wins over a same-named shelf file: it is the copy the
 entry was filed with, while the shelf is a folder people add to and take from.
@@ -71,9 +76,11 @@ Saving rewrites the `.txt` and refreshes the sidecar's derived fields
 `editedBy` and `editCount` beside them.
 
 **It never writes audio for an existing entry** and never touches `audios/`.
-`annotator`, `savedAt`, `diarizer` and `der` are the original annotation's
-record and are carried through untouched — an edit is a new fact recorded next
-to the old one, not a replacement.
+Every other key — `annotator`, `savedAt`, and anything another program put
+there — is the original annotation's record and is carried through untouched.
+An edit is a new fact recorded next to the old one, not a replacement. Keys
+this app has no concept of are never given a label in the metadata panel, but
+the **Raw sidecar** panel always shows the file exactly as it is on disk.
 
 Writes go through a temp file and `os.replace`, so a crash mid-save leaves the
 previous version intact rather than a truncated one.
@@ -150,4 +157,7 @@ E2E_UI=http://127.0.0.1:8200 E2E_DATASET=/tmp/e2e-disp/dataset \
 ```
 
 It expects the fixtures its header describes: an entry named `mixed` backed by
-`audios/mixed.wav`, and one named `orphan` with no audio at all.
+`audios/mixed.wav`, and one named `orphan` with no audio at all. Before opening
+a browser it asks the server which folder it is serving and refuses to run
+unless that is the folder you named and those fixtures are in it — a stale
+server holding the port is otherwise an easy way to edit real work by accident.

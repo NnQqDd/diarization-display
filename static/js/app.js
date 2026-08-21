@@ -121,30 +121,21 @@ function init() {
   });
 }
 
+/**
+ * The editing lattice, and nothing else.
+ *
+ * Which folders this app opened is settled once in `.env` and printed by
+ * `run.sh`; repeating it in the header would be a constant with a label. When
+ * one of them is missing it is the entry list and the player that say so, at
+ * the moment it actually costs you something.
+ */
 async function loadConfig() {
-  const badge = $('datasetBadge');
   try {
     const config = await api.config();
     state.grid = config.annotationGrid || 0.001;
-
-    badge.querySelector('.dot').dataset.state = config.dataset.ok ? 'ok' : 'bad';
-    badge.querySelector('[data-role="label"]').textContent = config.dataset.ok
-      ? 'dataset'
-      : 'dataset not found';
-    // Unlike the annotation UI, the path belongs on screen: whoever is looking
-    // at this page is the one who set ANNOTATEPATH, and a viewer that hides
-    // which folder it opened is a viewer you cannot debug.
-    badge.title = config.dataset.path;
-
-    const audios = $('audiosBadge');
-    audios.textContent = config.audios.ok ? 'audios' : 'audios missing';
-    audios.title = config.audios.ok
-      ? `${config.audios.path} — where an entry's audio is looked for when the dataset holds no copy`
-      : `${config.audios.path} — not there, so entries without their own audio cannot be played`;
-  } catch (error) {
-    badge.querySelector('.dot').dataset.state = 'bad';
-    badge.querySelector('[data-role="label"]').textContent = 'server unreachable';
-    badge.title = error.message;
+  } catch {
+    // The default lattice is the right one; if the server is really gone,
+    // loadEntries says so where it can be acted on.
   }
 }
 
@@ -289,10 +280,17 @@ function entryRow(entry) {
   return row;
 }
 
+/**
+ * Whether this entry can be listened to.
+ *
+ * *Where* the audio was found is not shown: it is looked for in the dataset and
+ * then in the audios folder automatically, so the distinction changes nothing
+ * anyone can act on. Only its absence does.
+ */
 function audioTag(entry) {
-  if (entry.audioSource === 'dataset') return '<span class="tag ok">in dataset</span>';
-  if (entry.audioSource === 'audios') return '<span class="tag">from audios</span>';
-  return '<span class="tag bad" title="Neither the dataset nor the audios folder has it">missing</span>';
+  return entry.hasAudio
+    ? ''
+    : '<span class="tag bad" title="Neither folder has it">missing</span>';
 }
 
 function showPair(on) {
@@ -391,10 +389,6 @@ function adopt({ stem, source, meta, audioSource, segments, annotationEnd,
 async function loadAudioFrom(url) {
   $('waveLoading').hidden = false;
   $('audioMissing').hidden = true;
-  $('audioSourcePill').hidden = false;
-  $('audioSourcePill').textContent = state.audioSource === 'audios'
-    ? 'audio from the audios folder'
-    : 'audio from the dataset';
 
   try {
     const response = await fetch(url);
@@ -433,7 +427,6 @@ async function useAudioBlob(blob) {
 }
 
 function showNoAudio(detail) {
-  $('audioSourcePill').hidden = true;
   const where = detail.originalFilename ? ` (${detail.originalFilename})` : '';
   warnAudio(
     `No audio for this entry${where}: the dataset holds no copy and nothing on ` +
@@ -458,7 +451,6 @@ function releaseAudio() {
     state.objectUrl = null;
   }
   $('audioMissing').hidden = true;
-  $('audioSourcePill').hidden = true;
 }
 
 function showProblems(problems) {
@@ -487,10 +479,8 @@ function renderMeta() {
   const fields = [
     ['Entry', state.stem, 'mono'],
     ['Original filename', meta.originalFilename, 'mono'],
-    ['Audio', audioWhere()],
     ['Duration', meta.durationSeconds ? formatTime(meta.durationSeconds, true) : null],
     ['Saved', meta.savedAt ? `${shortDate(meta.savedAt)} UTC` : null],
-    ['Diarizer', meta.diarizer],
     ['DER', der.derPercent != null ? `${Number(der.derPercent).toFixed(2)}%` : null],
     ['Annotator', who.user, 'mono'],
     ['Browser id', who.clientId, 'mono'],
@@ -511,12 +501,6 @@ function renderMeta() {
   $('metaRaw').textContent = Object.keys(meta).length
     ? JSON.stringify(meta, null, 2)
     : 'This entry has no sidecar. One will be written the first time it is saved.';
-}
-
-function audioWhere() {
-  if (state.audioSource === 'dataset') return 'in the dataset, beside the annotation';
-  if (state.audioSource === 'audios') return 'in the audios folder, under its own name';
-  return null;
 }
 
 /* ------------------------------------------------------------- upload a pair */
@@ -596,8 +580,6 @@ async function openPair() {
       problems: parsed.problems,
       profiles: [],
     });
-    $('audioSourcePill').hidden = false;
-    $('audioSourcePill').textContent = 'uploaded, not in the dataset';
     await useAudioBlob(file);
 
     showPair(false);

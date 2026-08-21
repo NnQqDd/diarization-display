@@ -45,6 +45,8 @@ META = {
     "segmentCount": 2,
     "speakers": ["speaker_0", "speaker_1"],
     "speakerProfiles": [{"speaker": "speaker_0", "gender": "male"}],
+    # A key this app has no concept of. It is here so the tests can prove that
+    # editing an entry carries a stranger's field through untouched.
     "diarizer": "pyannote",
     "der": None,
     "savedAt": "2026-08-20T10:00:00+00:00",

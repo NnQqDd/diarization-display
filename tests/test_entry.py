@@ -112,6 +112,7 @@ def test_the_original_annotator_is_not_overwritten_by_an_edit(dataset, audios, u
 
     assert meta["annotator"]["clientId"] == "7fee2aa2-cab0-44ce-8b40-741850d738fd"
     assert meta["savedAt"] == "2026-08-20T10:00:00+00:00"
+    # A key this app never reads is still a key it must not lose.
     assert meta["diarizer"] == "pyannote"
     assert meta["editedBy"]["user"] == "duy"
     assert meta["editCount"] == 1

@@ -1,4 +1,4 @@
-"""The ``audios/`` shelf: files already on the server, ready to be diarized.
+"""The ``audios/`` shelf: source audio the server already has.
 
 The browser asks for one by name, so the whole point of this module is that a
 name can never become a path. Nothing is ever joined onto the folder: a name is
@@ -6,10 +6,9 @@ matched against a fresh listing of it, and anything that is not one of those
 exact entries resolves to nothing. ``..``, absolute paths and symlinks pointing
 out of the folder therefore have nowhere to go.
 
-A file taken from here names its own dataset entry -- ``meeting_01.wav`` is
-saved as ``dataset/meeting_01.*`` rather than under a UUID -- which is what
-makes a shelf of files worth having: the annotation lands next to the name the
-audio already had.
+A file here names its own dataset entry -- ``meeting_01.wav`` belongs to
+``dataset/meeting_01.*`` rather than to a UUID -- so an annotation lands next
+to the name its audio already had.
 
 A copy of ``diarization-annotate/app/library.py``, and one that has to stay
 identical: this app looks here for an entry's audio when ``dataset/`` holds no
