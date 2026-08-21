@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Points at somebody's machine.
+.env
+
+# Browser E2E screenshots
+.e2e-shots/

@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Diarization Dataset</title>
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/css/app.css">
+<link rel="stylesheet" href="/static/css/display.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-title">
+    <span class="logo" aria-hidden="true"></span>
+    <h1>Diarization Dataset</h1>
+    <span class="pill readonly" title="This page can overwrite and delete other people's annotations">admin</span>
+  </div>
+  <div class="topbar-status">
+    <span class="badge" id="datasetBadge" title="The dataset folder this app is pointed at">
+      <span class="dot" data-state="unknown"></span><span data-role="label">reading dataset…</span>
+    </span>
+    <span class="badge subtle" id="audiosBadge" title="Where an entry's audio is looked for when the dataset holds no copy"></span>
+  </div>
+</header>
+
+<main class="page">
+
+  <!-- 1. Pick something to open ---------------------------------------------->
+  <section class="card" id="browseCard">
+    <div class="card-head">
+      <h2><span class="step">1</span> Entries <span class="count" id="entryCount"></span></h2>
+      <div class="card-head-actions">
+        <input type="search" id="entryFilter" class="filter-input"
+               placeholder="Filter by name, speaker, annotator…" autocomplete="off">
+        <div class="segmented" role="group" aria-label="Sort entries">
+          <button type="button" class="seg-btn is-active" data-entry-sort="savedAt">Newest</button>
+          <button type="button" class="seg-btn" data-entry-sort="durationSeconds">Longest</button>
+          <button type="button" class="seg-btn" data-entry-sort="stem">Name</button>
+        </div>
+        <button type="button" class="btn ghost" id="refreshBtn">
+          <span class="btn-label">Refresh</span>
+          <span class="spinner" hidden></span>
+        </button>
+      </div>
+    </div>
+    <div class="card-body no-pad">
+      <div class="table-scroll">
+        <table class="segments entries" id="entriesTable">
+          <thead>
+            <tr>
+              <th class="col-entry">Entry</th>
+              <th class="col-when">Saved</th>
+              <th class="col-num">Length</th>
+              <th class="col-num">Segments</th>
+              <th class="col-speakers">Speakers</th>
+              <th class="col-annotator">Annotator</th>
+              <th class="col-audio">Audio</th>
+            </tr>
+          </thead>
+          <tbody id="entriesBody"></tbody>
+        </table>
+      </div>
+      <p class="empty" id="entriesEmpty" hidden></p>
+    </div>
+    <div class="card-foot">
+      <div class="foot-status" id="browseStatus"></div>
+      <div class="foot-actions">
+        <button type="button" class="btn ghost" id="pairToggle">Upload a pair instead</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 1b. Or bring your own pair --------------------------------------------->
+  <section class="card" id="pairCard" hidden>
+    <div class="card-head">
+      <h2><span class="step">1b</span> Upload a pair</h2>
+      <span class="pill" title="Nothing is written until you press Add to dataset">not filed yet</span>
+    </div>
+    <div class="card-body">
+      <div class="pair-grid">
+        <label class="dropzone" id="audioDrop" for="audioInput" tabindex="0">
+          <input type="file" id="audioInput" accept="audio/*,.wav,.mp3,.flac,.ogg,.opus,.m4a,.aac,.webm" hidden>
+          <svg class="dropzone-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M9 18V5l12-2v13M9 13l12-2"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
+          </svg>
+          <span class="dropzone-main">Audio — drop it here, or <u>browse</u></span>
+          <span class="dropzone-sub" id="audioChosen">WAV, MP3, FLAC, OGG, M4A, WebM</span>
+        </label>
+
+        <label class="dropzone" id="textDrop" for="textInput" tabindex="0">
+          <input type="file" id="textInput" accept=".txt,text/plain" hidden>
+          <svg class="dropzone-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/>
+          </svg>
+          <span class="dropzone-main">Annotation — drop the <code>.txt</code> here, or <u>browse</u></span>
+          <span class="dropzone-sub" id="textChosen">One <code>speaker start end transcript</code> per line — not JSON</span>
+        </label>
+      </div>
+
+      <div class="upload-actions">
+        <button type="button" class="btn primary" id="openPairBtn" disabled>
+          <span class="btn-label">Open pair</span>
+          <span class="spinner" hidden></span>
+        </button>
+        <button type="button" class="btn ghost" id="browseToggle">Back to the dataset</button>
+        <p class="hint" id="pairHint">Both files are needed: the audio to listen to, the annotation to edit.</p>
+      </div>
+      <div class="alert error" id="pairError" hidden></div>
+    </div>
+  </section>
+
+  <!-- 2. Waveform + player --------------------------------------------------->
+  <section class="card" id="playerCard" hidden>
+    <div class="card-head">
+      <h2><span class="step">2</span> Waveform &amp; player</h2>
+      <div class="card-head-actions">
+        <span class="pill" id="audioSourcePill" hidden></span>
+        <div class="zoom">
+          <button type="button" class="btn icon" id="zoomOut" title="Zoom out (−)">−</button>
+          <button type="button" class="btn icon" id="zoomFit" title="Fit whole file">Fit</button>
+          <button type="button" class="btn icon" id="zoomIn" title="Zoom in (+)">+</button>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <div class="wave-wrap">
+        <div class="wave-scroll" id="waveScroll">
+          <div class="wave-spacer" id="waveSpacer">
+            <canvas id="waveCanvas" class="wave-canvas"></canvas>
+          </div>
+        </div>
+        <div class="wave-ruler" id="waveRuler"></div>
+        <div class="wave-loading" id="waveLoading" hidden><span class="spinner"></span> decoding waveform…</div>
+      </div>
+
+      <div class="player">
+        <button type="button" class="btn round" id="playBtn" title="Play / pause (space)">
+          <svg class="icon-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+          <svg class="icon-pause" viewBox="0 0 24 24" aria-hidden="true" hidden><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>
+        </button>
+        <button type="button" class="btn icon" id="backBtn" title="Back 5s">−5s</button>
+        <button type="button" class="btn icon" id="fwdBtn" title="Forward 5s">+5s</button>
+
+        <div class="time-readout">
+          <output id="currentTime">00:00:00</output>
+          <span class="sep">/</span>
+          <output id="totalTime" class="muted">00:00:00</output>
+        </div>
+
+        <label class="rate">
+          Speed
+          <select id="rateSelect">
+            <option value="0.5">0.5×</option>
+            <option value="0.75">0.75×</option>
+            <option value="1" selected>1×</option>
+            <option value="1.25">1.25×</option>
+            <option value="1.5">1.5×</option>
+            <option value="2">2×</option>
+          </select>
+        </label>
+
+        <label class="loop-toggle">
+          <input type="checkbox" id="loopSegment">
+          <span>Loop selected segment</span>
+        </label>
+
+        <audio id="audio" preload="auto"></audio>
+      </div>
+      <div class="alert warn" id="audioMissing" hidden></div>
+    </div>
+  </section>
+
+  <!-- 3. Segments ------------------------------------------------------------>
+  <section class="card" id="segmentsCard" hidden>
+    <div class="card-head">
+      <h2><span class="step">3</span> Segments <span class="count" id="segmentCount"></span></h2>
+      <div class="card-head-actions">
+        <div class="segmented" role="group" aria-label="Sort segments">
+          <button type="button" class="seg-btn is-active" data-sort="time">Sort by time</button>
+          <button type="button" class="seg-btn" data-sort="speaker">Sort by speaker</button>
+        </div>
+        <label class="check">
+          <input type="checkbox" id="msToggle" checked>
+          <span title="Show and edit hh:mm:ss.mmm instead of whole seconds">ms precision</span>
+        </label>
+        <button type="button" class="btn ghost" id="addSegment">+ Add segment</button>
+      </div>
+    </div>
+    <div class="card-body no-pad">
+      <div class="alert warn" id="parseProblems" hidden></div>
+      <div class="table-scroll">
+        <table class="segments" id="segmentsTable">
+          <thead>
+            <tr>
+              <th class="col-jump" title="Jump the playhead to this segment"></th>
+              <th class="col-speaker">Speaker</th>
+              <th class="col-time">Start</th>
+              <th class="col-time">End</th>
+              <th class="col-dur">Duration</th>
+              <th class="col-text">Transcript</th>
+              <th class="col-actions"></th>
+            </tr>
+          </thead>
+          <tbody id="segmentsBody"></tbody>
+        </table>
+      </div>
+      <p class="empty" id="segmentsEmpty" hidden>No segments left. Use <strong>+ Add segment</strong> to create one.</p>
+    </div>
+    <div class="card-foot">
+      <div class="foot-status" id="saveStatus"></div>
+      <div class="foot-actions">
+        <button type="button" class="btn danger" id="deleteBtn" disabled>
+          <span class="btn-label">Delete entry</span>
+          <span class="spinner" hidden></span>
+        </button>
+        <button type="button" class="btn ghost" id="revertBtn" disabled
+                title="Throw away every edit and re-read this entry from disk">
+          <span class="btn-label">Revert</span>
+          <span class="spinner" hidden></span>
+        </button>
+        <button type="button" class="btn primary" id="saveBtn" disabled>
+          <span class="btn-label">Save changes</span>
+          <span class="spinner" hidden></span>
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4. Speakers ------------------------------------------------------------>
+  <section class="card" id="speakersCard" hidden>
+    <div class="card-head">
+      <h2><span class="step">4</span> Speakers <span class="count" id="speakerCount"></span></h2>
+      <span class="pill" title="Nothing here is required — an empty field is saved as nothing">optional</span>
+    </div>
+    <div class="card-body no-pad">
+      <div class="table-scroll">
+        <table class="segments" id="speakersTable">
+          <thead>
+            <tr>
+              <th class="col-speaker">Speaker</th>
+              <th class="col-share">In this audio</th>
+              <th class="col-trait">Gender</th>
+              <th class="col-trait">Language</th>
+            </tr>
+          </thead>
+          <tbody id="speakersBody"></tbody>
+        </table>
+      </div>
+      <p class="empty" id="speakersEmpty" hidden>
+        Speakers appear here as segments are labelled. Rename one in
+        <strong>Segments</strong>; this table follows.
+      </p>
+    </div>
+  </section>
+
+  <datalist id="genderOptions">
+    <option value="female"><option value="male"><option value="other"><option value="unknown">
+  </datalist>
+  <datalist id="languageOptions">
+    <option value="Vietnamese"><option value="English"><option value="mixed"><option value="unknown">
+  </datalist>
+
+  <!-- 5. Metadata ------------------------------------------------------------>
+  <section class="card" id="metaCard" hidden>
+    <div class="card-head">
+      <h2><span class="step">5</span> Entry metadata</h2>
+      <span class="pill readonly" title="Recorded when the annotation was saved — not editable here">read-only</span>
+    </div>
+    <div class="card-body">
+      <dl class="meta-grid" id="metaGrid"></dl>
+      <details class="meta-raw">
+        <summary>Raw sidecar</summary>
+        <pre class="mono" id="metaRaw"></pre>
+      </details>
+    </div>
+  </section>
+
+</main>
+
+<div class="toast-stack" id="toasts" aria-live="polite"></div>
+
+<script type="module" src="/static/js/app.js"></script>
+</body>
+</html>

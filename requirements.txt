@@ -1,0 +1,6 @@
+fastapi>=0.115
+uvicorn[standard]>=0.30
+python-multipart>=0.0.9
+
+# No DiseService client, no DER: this app reads and edits what the annotation
+# UI wrote. Duration probing is ffprobe, called as a subprocess.

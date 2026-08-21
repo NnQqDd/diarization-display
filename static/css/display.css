@@ -1,0 +1,116 @@
+/* What this app has that the annotation UI does not ------------------------ */
+/* app.css is a verbatim copy of the annotation UI's stylesheet, so the two
+   look like one product. Everything below is the entry browser and the
+   metadata panel, which only exist here. */
+
+/* Entry list --------------------------------------------------------------- */
+
+.filter-input {
+  min-width: 220px;
+  padding: 5px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--bg-sunken);
+  color: var(--text);
+}
+.filter-input:focus { outline: none; border-color: var(--accent); }
+.filter-input::placeholder { color: var(--text-faint); }
+
+table.entries tbody tr { cursor: pointer; }
+table.entries tbody tr:hover { background: var(--bg-raised); }
+table.entries tbody tr.is-open { background: var(--accent-dim); }
+table.entries td { vertical-align: middle; }
+
+.col-entry     { min-width: 210px; }
+.col-when      { white-space: nowrap; }
+.col-num       { text-align: right; white-space: nowrap; }
+.col-speakers  { min-width: 150px; }
+.col-annotator { min-width: 170px; }
+.col-audio     { white-space: nowrap; }
+
+.entry-name {
+  display: block;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  word-break: break-all;
+}
+.entry-file { display: block; color: var(--text-faint); font-size: 11.5px; }
+
+/* One dot per speaker, in that speaker's colour: which voices are in a
+   recording is the thing you scan a list of recordings for. */
+.spk-dots { display: inline-flex; gap: 3px; flex-wrap: wrap; align-items: center; }
+.spk-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+
+.tag {
+  display: inline-block;
+  padding: 1px 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.tag.ok      { color: var(--good); border-color: rgba(63,185,80,.35); }
+.tag.warn    { color: var(--warn); border-color: rgba(210,153,34,.35); }
+.tag.bad     { color: var(--bad);  border-color: rgba(248,81,73,.35); }
+
+.who { display: block; font-size: 12px; }
+.who-id { font-family: var(--mono); color: var(--text-dim); }
+.who-ip { color: var(--text-faint); font-size: 11.5px; }
+
+/* Uploading a pair --------------------------------------------------------- */
+
+.pair-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+}
+.dropzone.is-set { border-color: var(--accent); border-style: solid; }
+.dropzone.is-set .dropzone-sub { color: var(--accent); }
+
+/* Metadata ----------------------------------------------------------------- */
+
+.meta-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 10px 18px;
+  margin: 0;
+}
+.meta-grid > div {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-sunken);
+  min-width: 0;
+}
+.meta-grid dt {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--text-faint);
+}
+.meta-grid dd {
+  margin: 2px 0 0;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.meta-grid dd.mono { font-family: var(--mono); font-size: 12px; }
+.meta-grid dd.none { color: var(--text-faint); font-style: italic; }
+
+.meta-raw { margin-top: 14px; }
+.meta-raw summary { cursor: pointer; color: var(--text-dim); font-size: 12.5px; }
+.meta-raw pre {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  max-height: 340px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-sunken);
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+/* Unsaved edits ------------------------------------------------------------ */
+
+.foot-status.dirty { color: var(--warn); }
