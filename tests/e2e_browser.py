@@ -3,13 +3,16 @@
 Needs a running server and a dataset it is allowed to *modify* -- this suite
 edits and deletes entries, so point it at a copy, never at real work::
 
-    mkdir -p /tmp/e2e-disp/dataset /tmp/e2e-disp/audios
+    mkdir -p /tmp/e2e-disp/dataset
     cp /path/to/real/dataset/* /tmp/e2e-disp/dataset/
-    DATASET_DIR=/tmp/e2e-disp/dataset AUDIOS_DIR=/tmp/e2e-disp/audios PORT=8200 ./run.sh &
+    DATASET_DIR=/tmp/e2e-disp/dataset PORT=8200 ./run.sh &
     E2E_UI=http://127.0.0.1:8200 E2E_DATASET=/tmp/e2e-disp/dataset \
       .venv/bin/python tests/e2e_browser.py
 
-Environment overrides: E2E_UI, E2E_DATASET, E2E_AUDIOS, E2E_SHOTS.
+The folder needs ``mixed.wav`` + ``mixed.txt`` + ``mixed.meta.json`` (whose
+``audioSource`` is ``"dataset"``), and ``orphan.txt`` with no audio behind it.
+
+Environment overrides: E2E_UI, E2E_DATASET, E2E_SHOTS.
 """
 
 import os
@@ -21,7 +24,6 @@ from playwright.sync_api import sync_playwright
 ROOT = Path(__file__).resolve().parent.parent
 UI = os.environ.get("E2E_UI", "http://127.0.0.1:8200")
 DATASET = Path(os.environ.get("E2E_DATASET", ROOT.parent / "diarization-annotate" / "dataset"))
-AUDIOS = Path(os.environ.get("E2E_AUDIOS", ROOT.parent / "diarization-annotate" / "audios"))
 SHOTS = Path(os.environ.get("E2E_SHOTS", ROOT / ".e2e-shots"))
 SHOTS.mkdir(parents=True, exist_ok=True)
 
@@ -62,7 +64,7 @@ def guard() -> None:
         )
 
     # Fixtures, not somebody's corpus: `mixed` is edited and `orphan` deleted.
-    missing = [name for name in ("mixed.txt", "orphan.txt")
+    missing = [name for name in ("mixed.txt", "mixed.wav", "orphan.txt")
                if not (expected / name).is_file()]
     if missing:
         refuse(
@@ -134,13 +136,16 @@ with sync_playwright() as playwright:
     page.fill("#entryFilter", "")
     page.wait_for_timeout(200)
 
-    # --- an entry whose audio lives on the shelf --------------------------
-    check("this entry keeps no audio of its own",
-          not list(DATASET.glob("mixed.*"))[0].parent.joinpath("mixed.wav").exists())
+    # --- an entry whose audio the dataset already held ---------------------
     served = page.request.get(f"{UI}/api/entries/mixed/audio")
-    check("and it is served anyway, from the audios folder",
+    check("its recording is served for playback",
           served.status == 200 and served.body()[:4] == b"RIFF", str(served.status))
+    is_upload = page.evaluate(
+        "fetch('/api/entries/mixed').then(r => r.json())")["audioIsUpload"]
+    check("and the entry knows the audio is not its own to delete",
+          is_upload is False)
 
+    mixed_before = (DATASET / "mixed.wav").read_bytes()
     open_entry(page, "mixed")
     page.wait_for_function("() => document.getElementById('waveLoading').hidden",
                            timeout=60_000)
@@ -184,9 +189,8 @@ with sync_playwright() as playwright:
     check("the file is chronological",
           [l.split()[1] for l in saved.splitlines()]
           == sorted(l.split()[1] for l in saved.splitlines()), saved)
-    check("the audio was not copied into the dataset",
-          not (DATASET / "mixed.wav").exists())
-    check("the source audio is untouched", (AUDIOS / "mixed.wav").is_file())
+    check("the recording is untouched by the edit",
+          (DATASET / "mixed.wav").read_bytes() == mixed_before)
     page.screenshot(path=SHOTS / "03-saved.png", full_page=True)
 
     # --- the sidecar keeps its history ------------------------------------
@@ -246,7 +250,7 @@ with sync_playwright() as playwright:
     page.wait_for_selector("#pairCard:not([hidden])")
     pair_txt = SHOTS / "pair.txt"
     pair_txt.write_text("speaker_0 00:00:00.500 00:00:02.000 uploaded pair\n")
-    page.set_input_files("#audioInput", str(AUDIOS / "mixed.wav"))
+    page.set_input_files("#audioInput", str(DATASET / "mixed.wav"))
     page.set_input_files("#textInput", str(pair_txt))
     page.wait_for_timeout(200)
     check("both halves are needed before it will open",
@@ -276,6 +280,26 @@ with sync_playwright() as playwright:
     page.wait_for_timeout(600)
     check("the suite leaves no pair behind",
           not list(DATASET.glob(f"{stem}.*")))
+
+    # --- deleting an entry must not delete the pool's recording ------------
+    # Annotation and audio share a folder now, so this is the check that keeps
+    # a tidy-up from destroying a source recording.
+    open_entry(page, "mixed")
+    page.click("#deleteBtn")
+    page.wait_for_timeout(300)
+    page.click("#deleteBtn")
+    page.wait_for_timeout(1200)
+    check("the entry's annotation is gone",
+          not (DATASET / "mixed.txt").exists())
+    check("but its recording is still there",
+          (DATASET / "mixed.wav").read_bytes() == mixed_before)
+    check("and the toast says the audio was left in place",
+          "left in place" in page.locator(".toast").last.inner_text(),
+          page.locator(".toast").last.inner_text())
+    # Leaving it is what makes it work again in the annotation UI: a recording
+    # with no annotation beside it is exactly what Randomize hands out.
+    check("with no annotation beside it, so it is work again",
+          not list(DATASET.glob("mixed.txt")))
 
     browser.close()
 

@@ -1,8 +1,8 @@
 """A dataset on disk, and a client pointed at it.
 
-Every test gets its own ``dataset/`` and ``audios/`` under ``tmp_path``, so
-nothing here can reach the real one -- this app edits and deletes annotations,
-and a test that ran against somebody's work would be a bad way to find out.
+Every test gets its own ``dataset/`` under ``tmp_path``, so nothing here can
+reach the real one -- this app edits and deletes annotations, and a test that
+ran against somebody's work would be a bad way to find out.
 """
 
 from __future__ import annotations
@@ -40,7 +40,7 @@ ANNOTATION = (
 
 META = {
     "originalFilename": "meeting 01.wav",
-    "audioSource": "dataset",
+    "audioSource": "upload",
     "durationSeconds": 6.0,
     "segmentCount": 2,
     "speakers": ["speaker_0", "speaker_1"],
@@ -67,18 +67,10 @@ def dataset(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def audios(tmp_path: Path) -> Path:
-    path = tmp_path / "audios"
-    path.mkdir()
-    return path
-
-
-@pytest.fixture
-def client(monkeypatch, tmp_path: Path, dataset: Path, audios: Path) -> TestClient:
+def client(monkeypatch, tmp_path: Path, dataset: Path) -> TestClient:
     settings = Settings(
         annotate_path=tmp_path,
         dataset_dir=dataset,
-        audios_dir=audios,
         static_dir=Path(__file__).resolve().parent.parent / "static",
         max_upload_bytes=16 * 1024 * 1024,
     )
@@ -97,12 +89,17 @@ def uploaded(dataset: Path) -> str:
 
 
 @pytest.fixture
-def from_shelf(dataset: Path, audios: Path) -> str:
-    """An entry made from audios/: annotation here, audio still over there."""
-    (audios / "meeting 01.wav").write_bytes(make_wav())
+def from_library(dataset: Path) -> str:
+    """An entry annotating a recording the dataset already held.
+
+    The recording keeps its own name; the annotation is filed under the cleaned
+    stem. That mismatch is the interesting part: a stem glob finds the
+    annotation and not the audio, and both halves have to work.
+    """
+    (dataset / "meeting 01.wav").write_bytes(make_wav())
     stem = "meeting_01"
     (dataset / f"{stem}.txt").write_text(ANNOTATION)
     (dataset / f"{stem}.meta.json").write_text(
-        json.dumps({**META, "audioSource": "audios"})
+        json.dumps({**META, "audioSource": "dataset"})
     )
     return stem

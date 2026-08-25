@@ -35,7 +35,6 @@ command -v ffprobe >/dev/null || \
 "$PYTHON" - <<'PY'
 from app.config import settings
 print(f"dataset     {settings.dataset_dir}{'' if settings.dataset_ok else '   (NOT FOUND)'}")
-print(f"audios      {settings.audios_dir}{'' if settings.audios_ok else '   (not found)'}")
 PY
 
 args=(-m uvicorn app.main:app --host "$HOST" --port "$PORT")

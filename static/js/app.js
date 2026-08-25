@@ -43,7 +43,8 @@ const state = {
   // which button the footer offers.
   source: null,
   meta: {},
-  audioSource: 'missing',
+  // Whether the annotator uploaded this audio -- see deleting, below.
+  audioIsUpload: false,
   // The uploaded audio, held for the waveform, the player, and the eventual
   // upload if the pair is filed.
   pairFile: null,
@@ -64,7 +65,7 @@ const state = {
   loading: false,
   // Where the audio of the entry that was just closed had been, so the delete
   // toast can say whether anything was left behind on the shelf.
-  audioSourceWas: null,
+  audioIsUploadWas: false,
 };
 
 let waveform = null;
@@ -283,14 +284,14 @@ function entryRow(entry) {
 /**
  * Whether this entry can be listened to.
  *
- * *Where* the audio was found is not shown: it is looked for in the dataset and
- * then in the audios folder automatically, so the distinction changes nothing
- * anyone can act on. Only its absence does.
+ * Only the absence is shown. Audio and annotation live in one folder, so there
+ * is no "where" left to report -- but a row with nothing to play is a row you
+ * cannot check by ear, and that is worth a mark.
  */
 function audioTag(entry) {
   return entry.hasAudio
     ? ''
-    : '<span class="tag bad" title="Neither folder has it">missing</span>';
+    : '<span class="tag bad" title="The dataset holds no audio for this entry">missing</span>';
 }
 
 function showPair(on) {
@@ -311,7 +312,7 @@ async function openEntry(stem) {
       stem: detail.stem,
       source: 'dataset',
       meta: detail.meta || {},
-      audioSource: detail.audioSource,
+      audioIsUpload: detail.audioIsUpload,
       segments: detail.segments,
       annotationEnd: detail.annotationEnd,
       duration: detail.durationSeconds,
@@ -337,14 +338,14 @@ async function openEntry(stem) {
  * decides what "open" means -- and the one place that snapshots the original,
  * which is what makes Revert honest.
  */
-function adopt({ stem, source, meta, audioSource, segments, annotationEnd,
+function adopt({ stem, source, meta, audioIsUpload, segments, annotationEnd,
                  duration, problems, profiles }) {
   releaseAudio();
 
   state.stem = stem;
   state.source = source;
   state.meta = meta || {};
-  state.audioSource = audioSource || 'missing';
+  state.audioIsUpload = Boolean(audioIsUpload);
   state.duration = duration || 0;
   state.annotationEnd = annotationEnd || duration || 0;
   state.selectedId = null;
@@ -573,7 +574,7 @@ async function openPair() {
       stem: null,
       source: 'pair',
       meta: {},
-      audioSource: 'pair',
+      audioIsUpload: true,
       segments: parsed.segments,
       annotationEnd: parsed.annotationEnd,
       duration: parsed.annotationEnd,
@@ -961,7 +962,7 @@ async function save() {
     // than what this page believes it sent.
     const detail = await api.entry(state.stem);
     state.meta = detail.meta || {};
-    state.audioSource = detail.audioSource;
+    state.audioIsUpload = detail.audioIsUpload;
     renderMeta();
     $('metaCard').hidden = false;
   } catch (error) {
@@ -1027,7 +1028,7 @@ async function removeEntry() {
 
   const button = $('deleteBtn');
   const stem = state.stem;
-  const wasOnShelf = state.audioSource === 'audios';
+  const keepsAudio = !state.audioIsUpload;
   state.loading = true;
   busy(button, true);
   try {
@@ -1037,9 +1038,10 @@ async function removeEntry() {
     toast(
       'Deleted from dataset',
       result.removed.map((name) => `<code>${escapeHtml(name)}</code>`).join('<br>') +
-        (wasOnShelf
-          ? '<span class="toast-note">Its audio is not in the dataset and was ' +
-            'left where it is.</span>'
+        (keepsAudio
+          ? '<span class="toast-note">Its audio was already in the dataset, so ' +
+            'it was left in place — and is work waiting to be annotated ' +
+            'again.</span>'
           : ''),
       'ok',
     );
@@ -1054,7 +1056,7 @@ async function removeEntry() {
 /** Close whatever is open, without touching anything on disk. */
 function closeOpen() {
   releaseAudio();
-  state.audioSourceWas = state.audioSource;
+  state.audioIsUploadWas = state.audioIsUpload;
   state.stem = null;
   state.playingSegmentId = null;
   state.source = null;
@@ -1063,7 +1065,7 @@ function closeOpen() {
   state.pairFile = null;
   pairText = null;
   state.meta = {};
-  state.audioSource = 'missing';
+  state.audioIsUpload = false;
 
   table.setData([]);
   speakers.clear();

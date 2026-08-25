@@ -6,7 +6,7 @@ Route map
 ``GET  /api/config``             where the dataset is, and whether it is there
 ``GET  /api/entries``            every entry in dataset/, newest first
 ``GET  /api/entries/{stem}``     one entry: metadata, segments, parse problems
-``GET  /api/entries/{stem}/audio`` its audio -- from dataset/, else audios/
+``GET  /api/entries/{stem}/audio`` its audio, when the folder holds any
 ``PUT  /api/entries/{stem}``     replace that entry's annotation
 ``DELETE /api/entries/{stem}``   take the entry out of dataset/
 ``POST /api/parse``              read an uploaded .txt into segments
@@ -72,7 +72,6 @@ async def config() -> dict[str, Any]:
     return {
         "annotatePath": str(settings.annotate_path),
         "dataset": {"path": str(settings.dataset_dir), "ok": settings.dataset_ok},
-        "audios": {"path": str(settings.audios_dir), "ok": settings.audios_ok},
         "ffmpeg": audio_mod.ffmpeg_available(),
         "annotationGrid": ANNOTATION_GRID,
         "maxUploadMb": settings.max_upload_bytes // (1024 * 1024),
@@ -88,7 +87,7 @@ async def config() -> dict[str, Any]:
 async def list_entries() -> dict[str, Any]:
     """Every entry, with enough of each to fill a row and to filter on."""
     entries = await asyncio.to_thread(
-        entry_mod.list_entries, settings.dataset_dir, settings.audios_dir
+        entry_mod.list_entries, settings.dataset_dir
     )
     summaries = [e.summary() for e in entries]
     return {
@@ -101,7 +100,7 @@ async def list_entries() -> dict[str, Any]:
 
 
 def _load(stem: str) -> entry_mod.Entry:
-    entry = entry_mod.read_entry(stem, settings.dataset_dir, settings.audios_dir)
+    entry = entry_mod.read_entry(stem, settings.dataset_dir)
     if entry is None:
         raise HTTPException(status_code=404, detail="No entry by that name.")
     return entry
@@ -227,12 +226,19 @@ async def create_entry(
 
 @app.delete("/api/entries/{stem}")
 async def delete_entry(stem: str) -> dict[str, Any]:
-    """Take one entry out of dataset/ -- and nothing out of audios/."""
+    """Take one entry out of dataset/ -- annotation, sidecar, and its own audio.
+
+    Its own audio means an upload. A recording the dataset already held stays:
+    the two share a folder, so this is where the line is drawn, and leaving it
+    is also what puts the recording back in front of annotators as work.
+    """
     entry = _load(stem)
+    keep_audio = not entry.audio_is_upload
     removed = await asyncio.to_thread(
-        entry_mod.remove_entry, settings.dataset_dir, entry.stem
+        entry_mod.remove_entry, settings.dataset_dir, entry.stem,
+        keep_audio=keep_audio,
     )
-    return {"stem": entry.stem, "removed": removed}
+    return {"stem": entry.stem, "removed": removed, "keptAudio": keep_audio}
 
 
 # --------------------------------------------------------------------------- #

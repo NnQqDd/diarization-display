@@ -48,42 +48,61 @@ def test_an_unreadable_line_is_reported_not_skipped():
 # --------------------------------------------------------------- finding audio
 
 
-def test_audio_is_found_beside_the_annotation(dataset, audios, uploaded):
-    path, source = entry_mod.audio_for(uploaded, dataset, audios)
-    assert source == "dataset" and path.name == f"{uploaded}.wav"
+def test_audio_is_found_beside_the_annotation(dataset, uploaded):
+    assert entry_mod.audio_for(uploaded, dataset).name == f"{uploaded}.wav"
 
 
-def test_audio_falls_back_to_the_audios_folder(dataset, audios, from_shelf):
-    """The whole point: an entry from the shelf keeps no copy of its own."""
-    assert not list(dataset.glob("*.wav"))
-    path, source = entry_mod.audio_for(from_shelf, dataset, audios)
-    assert source == "audios" and path.name == "meeting 01.wav"
+def test_a_recording_is_found_under_its_own_name(dataset, from_library):
+    """The stem is the cleaned name, so a stem glob alone would never find it."""
+    assert not (dataset / f"{from_library}.wav").exists()
+    path = entry_mod.audio_for(from_library, dataset, "meeting 01.wav")
+    assert path.name == "meeting 01.wav"
 
 
-def test_a_dataset_copy_wins_over_a_shelf_file_of_the_same_name(dataset, audios, from_shelf):
-    (dataset / f"{from_shelf}.wav").write_bytes(make_wav())
-    _, source = entry_mod.audio_for(from_shelf, dataset, audios)
-    assert source == "dataset"
+def test_a_file_named_after_the_stem_wins(dataset, from_library):
+    """The copy the entry was filed with beats the one merely cleaned to it."""
+    (dataset / f"{from_library}.wav").write_bytes(make_wav())
+    path = entry_mod.audio_for(from_library, dataset, "meeting 01.wav")
+    assert path.name == f"{from_library}.wav"
 
 
-def test_an_entry_with_no_audio_anywhere_is_still_an_entry(dataset, audios):
+def test_a_recording_the_dataset_held_is_not_the_entrys_to_delete(dataset, from_library):
+    entry = entry_mod.read_entry(from_library, dataset)
+    assert entry.audio_is_upload is False
+    assert entry.audio_path.name == "meeting 01.wav"
+
+
+def test_an_upload_is_the_entrys_own(dataset, uploaded):
+    entry = entry_mod.read_entry(uploaded, dataset)
+    assert entry.audio_is_upload is True
+    assert entry.audio_path.name == f"{uploaded}.wav"
+
+
+def test_an_entry_with_no_sidecar_keeps_its_audio(dataset):
+    """Silence is not consent -- an unlabelled entry is not an upload."""
+    (dataset / "rec.wav").write_bytes(make_wav())
+    (dataset / "rec.txt").write_text(ANNOTATION)
+    assert entry_mod.read_entry("rec", dataset).audio_is_upload is False
+
+
+def test_an_entry_with_no_audio_at_all_is_still_an_entry(dataset):
     (dataset / "orphan.txt").write_text(ANNOTATION)
-    entry = entry_mod.read_entry("orphan", dataset, audios)
+    entry = entry_mod.read_entry("orphan", dataset)
     assert entry is not None
-    assert entry.audio_path is None and entry.audio_source == "missing"
+    assert entry.audio_path is None and entry.audio_is_upload is False
     assert len(entry.segments) == 2
 
 
-def test_audio_without_an_annotation_is_not_an_entry(dataset, audios):
+def test_audio_without_an_annotation_is_not_an_entry(dataset):
     (dataset / "leftover.wav").write_bytes(make_wav())
-    assert entry_mod.read_entry("leftover", dataset, audios) is None
-    assert entry_mod.list_entries(dataset, audios) == []
+    assert entry_mod.read_entry("leftover", dataset) is None
+    assert entry_mod.list_entries(dataset) == []
 
 
 # --------------------------------------------------------------- writing back
 
 
-def test_saving_never_touches_the_audio(dataset, audios, uploaded):
+def test_saving_never_touches_the_audio(dataset, uploaded):
     before = (dataset / f"{uploaded}.wav").read_bytes()
     entry_mod.write_entry(
         uploaded, [ann.Segment("speaker_0", 0.5, 1.5, "edited")], dataset
@@ -91,16 +110,16 @@ def test_saving_never_touches_the_audio(dataset, audios, uploaded):
     assert (dataset / f"{uploaded}.wav").read_bytes() == before
 
 
-def test_saving_a_shelf_entry_leaves_the_shelf_alone(dataset, audios, from_shelf):
-    before = (audios / "meeting 01.wav").read_bytes()
+def test_saving_a_library_entry_leaves_the_recording_alone(dataset, from_library):
+    before = (dataset / "meeting 01.wav").read_bytes()
     entry_mod.write_entry(
-        from_shelf, [ann.Segment("speaker_0", 0.5, 1.5, "")], dataset
+        from_library, [ann.Segment("speaker_0", 0.5, 1.5, "")], dataset
     )
-    assert (audios / "meeting 01.wav").read_bytes() == before
-    assert not list(dataset.glob("*.wav"))
+    assert (dataset / "meeting 01.wav").read_bytes() == before
+    assert sorted(p.name for p in dataset.glob("*.wav")) == ["meeting 01.wav"]
 
 
-def test_the_original_annotator_is_not_overwritten_by_an_edit(dataset, audios, uploaded):
+def test_the_original_annotator_is_not_overwritten_by_an_edit(dataset, uploaded):
     """An edit is a new fact recorded beside the old one, not a replacement."""
     entry_mod.write_entry(
         uploaded,
@@ -118,14 +137,14 @@ def test_the_original_annotator_is_not_overwritten_by_an_edit(dataset, audios, u
     assert meta["editCount"] == 1
 
 
-def test_edits_are_counted_not_reset(dataset, audios, uploaded):
+def test_edits_are_counted_not_reset(dataset, uploaded):
     for _ in range(3):
         entry_mod.write_entry(uploaded, [ann.Segment("s", 0.0, 1.0, "")], dataset)
     meta = json.loads((dataset / f"{uploaded}.meta.json").read_text())
     assert meta["editCount"] == 3
 
 
-def test_derived_fields_follow_the_segments(dataset, audios, uploaded):
+def test_derived_fields_follow_the_segments(dataset, uploaded):
     entry_mod.write_entry(
         uploaded,
         [ann.Segment("speaker_9", 0.0, 1.0, ""), ann.Segment("speaker_2", 2.0, 3.0, "")],
@@ -142,7 +161,7 @@ def test_derived_fields_follow_the_segments(dataset, audios, uploaded):
     ]
 
 
-def test_the_annotation_is_written_chronologically(dataset, audios, uploaded):
+def test_the_annotation_is_written_chronologically(dataset, uploaded):
     entry_mod.write_entry(
         uploaded,
         [ann.Segment("speaker_1", 5.0, 6.0, ""), ann.Segment("speaker_0", 1.0, 2.0, "")],
@@ -152,7 +171,7 @@ def test_the_annotation_is_written_chronologically(dataset, audios, uploaded):
     assert lines[0].startswith("speaker_0") and lines[1].startswith("speaker_1")
 
 
-def test_a_failed_write_does_not_truncate_the_previous_one(dataset, audios, uploaded, monkeypatch):
+def test_a_failed_write_does_not_truncate_the_previous_one(dataset, uploaded, monkeypatch):
     """The file being overwritten is the only copy of somebody's work."""
     before = (dataset / f"{uploaded}.txt").read_text()
 
@@ -171,14 +190,33 @@ def test_a_failed_write_does_not_truncate_the_previous_one(dataset, audios, uplo
 # ------------------------------------------------------------------- removal
 
 
-def test_removing_takes_the_dataset_files_and_nothing_else(dataset, audios, from_shelf):
-    removed = entry_mod.remove_entry(dataset, from_shelf)
+def test_removing_a_library_entry_keeps_the_recording(dataset, from_library):
+    removed = entry_mod.remove_entry(dataset, from_library, keep_audio=True)
     assert sorted(removed) == ["meeting_01.meta.json", "meeting_01.txt"]
+    assert (dataset / "meeting 01.wav").is_file()
+
+
+def test_removing_an_upload_takes_its_audio_too(dataset, uploaded):
+    removed = entry_mod.remove_entry(dataset, uploaded)
+    assert sorted(removed) == [
+        f"{uploaded}.meta.json", f"{uploaded}.txt", f"{uploaded}.wav",
+    ]
     assert not list(dataset.iterdir())
-    assert (audios / "meeting 01.wav").is_file()
 
 
-def test_removal_cannot_climb_out_of_the_dataset(dataset, audios, tmp_path):
+def test_keeping_the_audio_spares_a_recording_named_after_the_stem(dataset, from_library):
+    """The real dataset's recordings *are* named after their stem: uuid.wav.
+
+    That is the case ``keep_audio`` exists for -- the glob matches the audio,
+    and without the guard the delete would take the source recording with it.
+    """
+    (dataset / f"{from_library}.wav").write_bytes(make_wav())
+    removed = entry_mod.remove_entry(dataset, from_library, keep_audio=True)
+    assert sorted(removed) == ["meeting_01.meta.json", "meeting_01.txt"]
+    assert (dataset / f"{from_library}.wav").is_file()
+
+
+def test_removal_cannot_climb_out_of_the_dataset(dataset, tmp_path):
     victim = tmp_path / "keepme.txt"
     victim.write_text("not yours")
     assert entry_mod.remove_entry(dataset, "../keepme") == []

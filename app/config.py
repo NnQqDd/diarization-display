@@ -2,9 +2,9 @@
 
 This app owns no data. It reads and edits what the annotation UI wrote, so the
 one setting that matters is ``ANNOTATEPATH``: the checkout of
-``diarization-annotate`` whose ``dataset/`` and ``audios/`` folders are the
-subject. Everything else follows from it and can still be overridden one by one
-when a deployment splits them up.
+``diarization-annotate`` whose ``dataset/`` folder is the subject. Everything
+else follows from it and can still be overridden one by one when a deployment
+keeps the data somewhere else.
 
 Settings come from ``.env`` beside this checkout, then from the real
 environment, which wins -- so a one-off run can point somewhere else without
@@ -72,7 +72,6 @@ def _env_path(name: str, default: Path) -> Path:
 class Settings:
     annotate_path: Path
     dataset_dir: Path
-    audios_dir: Path
     static_dir: Path
     max_upload_bytes: int
 
@@ -80,21 +79,17 @@ class Settings:
     def dataset_ok(self) -> bool:
         return self.dataset_dir.is_dir()
 
-    @property
-    def audios_ok(self) -> bool:
-        return self.audios_dir.is_dir()
-
 
 def load_settings() -> Settings:
     # The sibling checkout is the obvious default: these two repos are built to
     # sit next to each other, and a missing .env should still start.
     annotate_path = _env_path("ANNOTATEPATH", (ROOT.parent / "diarization-annotate"))
+    # Overridable on their own, for a deployment that keeps the data somewhere
+    # other than inside the annotation checkout.
+    dataset_dir = _env_path("DATASET_DIR", annotate_path / "dataset")
     return Settings(
         annotate_path=annotate_path,
-        # Overridable on their own, for a deployment that keeps the data
-        # somewhere other than inside the annotation checkout.
-        dataset_dir=_env_path("DATASET_DIR", annotate_path / "dataset"),
-        audios_dir=_env_path("AUDIOS_DIR", annotate_path / "audios"),
+        dataset_dir=dataset_dir,
         static_dir=ROOT / "static",
         max_upload_bytes=_env_int("MAX_UPLOAD_MB", 1024) * 1024 * 1024,
     )

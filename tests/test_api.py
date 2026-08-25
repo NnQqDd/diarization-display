@@ -36,7 +36,7 @@ def test_the_list_carries_what_a_row_needs(client, uploaded):
     assert row["stem"] == uploaded
     assert row["segmentCount"] == 2
     assert row["speakers"] == ["speaker_0", "speaker_1"]
-    assert row["audioSource"] == "dataset" and row["hasAudio"] is True
+    assert row["hasAudio"] is True and row["audioIsUpload"] is True
     # The whole reason this app exists rather than a `ls`.
     assert row["annotator"]["ip"] == "203.0.113.7"
     assert row["annotator"]["clientId"].startswith("7fee2aa2")
@@ -46,7 +46,7 @@ def test_the_list_flags_an_entry_whose_audio_is_gone(client, dataset):
     (dataset / "orphan.txt").write_text(ANNOTATION)
     body = client.get("/api/entries").json()
     assert body["missingAudio"] == 1
-    assert body["entries"][0]["audioSource"] == "missing"
+    assert body["entries"][0]["hasAudio"] is False
 
 
 def test_newest_first(client, dataset, uploaded):
@@ -80,10 +80,17 @@ def test_the_audio_comes_from_the_dataset_when_it_is_there(client, uploaded):
     assert response.content[:4] == b"RIFF"
 
 
-def test_the_audio_falls_back_to_the_audios_folder(client, from_shelf):
-    """An entry made from the shelf has no copy of its own; it is still playable."""
-    response = client.get(f"/api/entries/{from_shelf}/audio")
+def test_a_recording_plays_under_its_own_name(client, from_library):
+    """Its stem is the cleaned name, so a stem glob alone would never find it."""
+    response = client.get(f"/api/entries/{from_library}/audio")
     assert response.status_code == 200 and response.content[:4] == b"RIFF"
+
+
+def test_an_entry_says_whether_its_audio_is_its_own(client, from_library, uploaded):
+    """What decides, on delete, between an undo and a destroyed recording."""
+    rows = {e["stem"]: e for e in client.get("/api/entries").json()["entries"]}
+    assert rows[from_library]["audioIsUpload"] is False
+    assert rows[uploaded]["audioIsUpload"] is True
 
 
 def test_an_entry_with_no_audio_says_so_rather_than_500ing(client, dataset):
@@ -120,12 +127,12 @@ def test_editing_leaves_the_audio_untouched(client, dataset, uploaded):
     assert (dataset / f"{uploaded}.wav").read_bytes() == before
 
 
-def test_editing_a_shelf_entry_never_reaches_the_shelf(client, dataset, audios, from_shelf):
-    before = (audios / "meeting 01.wav").read_bytes()
-    assert client.put(f"/api/entries/{from_shelf}", json=_payload([SEGMENT])).status_code == 200
-    assert (audios / "meeting 01.wav").read_bytes() == before
+def test_editing_a_library_entry_never_reaches_the_recording(client, dataset, from_library):
+    before = (dataset / "meeting 01.wav").read_bytes()
+    assert client.put(f"/api/entries/{from_library}", json=_payload([SEGMENT])).status_code == 200
+    assert (dataset / "meeting 01.wav").read_bytes() == before
     assert sorted(p.name for p in dataset.iterdir()) == [
-        "meeting_01.meta.json", "meeting_01.txt",
+        "meeting 01.wav", "meeting_01.meta.json", "meeting_01.txt",
     ]
 
 
@@ -178,10 +185,30 @@ def test_deleting_takes_the_whole_entry(client, dataset, uploaded):
     assert not list(dataset.iterdir())
 
 
-def test_deleting_a_shelf_entry_keeps_the_audio(client, dataset, audios, from_shelf):
-    client.delete(f"/api/entries/{from_shelf}")
-    assert not list(dataset.iterdir())
-    assert (audios / "meeting 01.wav").is_file()
+def test_deleting_a_library_entry_keeps_the_recording(client, dataset, from_library):
+    """The audio is the corpus. Deleting the annotation puts it back to work."""
+    response = client.delete(f"/api/entries/{from_library}")
+    assert response.status_code == 200
+    assert response.json()["keptAudio"] is True
+    assert sorted(response.json()["removed"]) == [
+        "meeting_01.meta.json", "meeting_01.txt",
+    ]
+    assert (dataset / "meeting 01.wav").is_file()
+
+
+def test_deleting_an_entry_named_after_its_file_keeps_the_recording(client, dataset):
+    """The real dataset's recordings are ``<uuid>.wav``: stem and name agree.
+
+    That is when the stem glob reaches the audio, so it is the case the guard
+    has to hold for. Without it, deleting an annotation destroys the source.
+    """
+    (dataset / "rec.wav").write_bytes(make_wav())
+    (dataset / "rec.txt").write_text(ANNOTATION)
+
+    response = client.delete("/api/entries/rec")
+    assert response.json()["keptAudio"] is True
+    assert response.json()["removed"] == ["rec.txt"]
+    assert (dataset / "rec.wav").is_file()
 
 
 def test_deleting_something_that_is_not_there_is_a_404(client):
@@ -224,7 +251,8 @@ def test_a_pair_can_be_filed_as_a_new_entry(client, dataset):
     ])
     meta = json.loads((dataset / f"{stem}.meta.json").read_text())
     assert meta["originalFilename"] == "outside.wav"
-    assert meta["audioSource"] == "dataset"
+    # An upload, so its audio is this entry's to delete along with it.
+    assert meta["audioSource"] == "upload"
 
 
 def test_filing_a_pair_twice_makes_two_entries(client, dataset):

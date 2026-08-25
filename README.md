@@ -30,7 +30,6 @@ anything else is validated against the times in its annotation).
 |---|---|---|
 | `ANNOTATEPATH` | `../diarization-annotate` | The checkout whose data this opens |
 | `DATASET_DIR` | `$ANNOTATEPATH/dataset` | Set only if the data is not inside that checkout |
-| `AUDIOS_DIR` | `$ANNOTATEPATH/audios` | Same, for the audio folder |
 | `PORT` | `8200` | |
 | `HOST` | `127.0.0.1` | Leave it |
 | `MAX_UPLOAD_MB` | `1024` | Ceiling on an uploaded pair's audio |
@@ -40,7 +39,7 @@ anything else is validated against the times in its annotation).
 A **stem**, not a file. `dataset/` holds files sharing one:
 
 ```
-550e8400-….wav        the audio — only when the entry came from an upload
+550e8400-….wav        the audio
 550e8400-….txt        the annotation, one segment per line
 550e8400-….meta.json  duration, speakers, who saved it and when
 ```
@@ -50,24 +49,20 @@ annotation beside it is a leftover and is not listed.
 
 ### Finding the audio
 
-Automatic, and not something the screen talks about: there is one dataset
-folder and one audio folder, both settled in `.env` and printed by `run.sh`, so
+Automatic, and not something the screen talks about: there is one folder, so
 *where* a recording was found changes nothing anyone can act on. The UI says
-only when there is no recording at all. The lookup is `dataset/` first, then
-`audios/`, then nothing:
+only when there is no recording at all.
 
-1. **`dataset/<stem>.<ext>`** — an entry filed from an upload keeps its own copy.
-2. **`audios/`** — an entry made with **Randomize audio** does not: the
-   annotation UI leaves those files where they are and names the entry after
-   one, so the audio is found by cleaning each shelf filename into a stem the
-   same way that app did. `audios/meeting 01.wav` backs `meeting_01`.
+1. **`<stem>.<ext>`** — the usual case, and the one that wins when both exist:
+   it is the file the entry was filed under.
+2. **A recording whose name cleans to the stem** — an entry made with
+   **Randomize audio** is named after the recording it annotates, cleaned the
+   same way the annotation UI does it, so `meeting 01.wav` backs `meeting_01`
+   and a stem glob alone would never find it.
 3. **Nothing** — the row is tagged `missing`, the only case the list marks,
    and the entry still opens. Times are the work; without the sound you can
    still read, retime and delete them, validated against the length recorded in
    the sidecar.
-
-A copy in `dataset/` wins over a same-named shelf file: it is the copy the
-entry was filed with, while the shelf is a folder people add to and take from.
 
 ### What a save does, and does not
 
@@ -75,8 +70,7 @@ Saving rewrites the `.txt` and refreshes the sidecar's derived fields
 (`segmentCount`, `speakers`, `speakerProfiles`), then records `editedAt`,
 `editedBy` and `editCount` beside them.
 
-**It never writes audio for an existing entry** and never touches `audios/`.
-Every other key — `annotator`, `savedAt`, and anything another program put
+**It never writes audio for an existing entry.** Every other key — `annotator`, `savedAt`, and anything another program put
 there — is the original annotation's record and is carried through untouched.
 An edit is a new fact recorded next to the old one, not a replacement. Keys
 this app has no concept of are never given a label in the metadata panel, but
@@ -85,8 +79,12 @@ the **Raw sidecar** panel always shows the file exactly as it is on disk.
 Writes go through a temp file and `os.replace`, so a crash mid-save leaves the
 previous version intact rather than a truncated one.
 
-**Delete** removes every `dataset/` file of that stem, and nothing else. An
-entry made from `audios/` leaves its source audio ready to be handed out again.
+**Delete** removes the entry's annotation and sidecar, and its audio only when
+the sidecar says `"audioSource": "upload"` — the annotator's own file, filed
+with the entry. Anything else is a recording the dataset already held: it stays,
+and with no annotation beside it the annotation UI counts it as work again. That
+is the only thing between a tidy-up and a lost recording, so silence is not
+consent: an entry with no sidecar keeps its audio.
 
 ## Uploading a pair
 
@@ -108,7 +106,7 @@ app/
   config.py     .env + environment -> Settings
   entry.py      one entry: read, find its audio, write it back, delete it
   annotation.py segment model, validation — a copy of the annotation UI's, plus a reader
-  library.py    the audios/ shelf — a copy, so both apps clean a name identically
+  library.py    the dataset's audio — a copy, so both apps clean a name identically
   audio.py      ffprobe duration
   identity.py   who made an edit
 static/         index.html, css/, js/ (no build step, no CDN)
@@ -148,16 +146,16 @@ server — and because it edits and deletes, **give it a copy**:
 ```bash
 .venv/bin/pip install playwright && .venv/bin/playwright install chromium
 
-mkdir -p /tmp/e2e-disp/dataset /tmp/e2e-disp/audios
+mkdir -p /tmp/e2e-disp/dataset
 cp /path/to/dataset/* /tmp/e2e-disp/dataset/
 
-DATASET_DIR=/tmp/e2e-disp/dataset AUDIOS_DIR=/tmp/e2e-disp/audios PORT=8200 ./run.sh &
+DATASET_DIR=/tmp/e2e-disp/dataset PORT=8200 ./run.sh &
 E2E_UI=http://127.0.0.1:8200 E2E_DATASET=/tmp/e2e-disp/dataset \
-  E2E_AUDIOS=/tmp/e2e-disp/audios .venv/bin/python tests/e2e_browser.py
+  .venv/bin/python tests/e2e_browser.py
 ```
 
 It expects the fixtures its header describes: an entry named `mixed` backed by
-`audios/mixed.wav`, and one named `orphan` with no audio at all. Before opening
+`mixed.wav`, and one named `orphan` with no audio at all. Before opening
 a browser it asks the server which folder it is serving and refuses to run
 unless that is the folder you named and those fixtures are in it — a stale
 server holding the port is otherwise an easy way to edit real work by accident.

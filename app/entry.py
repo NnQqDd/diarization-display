@@ -2,15 +2,20 @@
 
 An entry is a *stem*, not a file. ``dataset/`` holds files sharing one::
 
-    550e8400-….wav        the audio -- only when the entry came from an upload
+    550e8400-….wav        the audio
     550e8400-….txt        the annotation, one segment per line
     550e8400-….meta.json  duration, speakers, who saved it and when
 
-The audio is the part that may be missing. An entry made from the ``audios/``
-shelf never had a copy here: the annotation UI leaves those files where they
-are and names the entry after one. So finding an entry's audio means looking in
-``dataset/`` first and falling back to the shelf, and coming up empty is a
-normal answer -- the annotation is still perfectly editable without it.
+The audio is the part that may be missing -- a hand-made annotation, or a file
+moved away -- and that is a normal answer: the annotation is still perfectly
+editable without it.
+
+An entry the annotator did not upload is a different case. Its audio is a
+recording the dataset already held, filed under its own name rather than under
+the entry's stem, and it is the corpus rather than the entry's property.
+Deleting such an entry takes the annotation and leaves the recording -- which
+is also what puts it back in front of annotators, since over in the annotation
+UI a recording with no annotation beside it is work waiting to be done.
 
 Writing back is deliberately narrow. This app edits annotations; it never
 rewrites audio. A save replaces the ``.txt``, refreshes the derived fields of
@@ -30,18 +35,14 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from . import annotation as ann
+from . import library as library_mod
 from .annotation import Segment
+from .library import ALLOWED_EXTENSIONS
 
-# Extensions an audio file may have. Identical to the annotation UI's list, so
-# the same file is recognised by both.
-ALLOWED_EXTENSIONS = {
-    ".wav", ".mp3", ".flac", ".ogg", ".oga", ".opus", ".m4a", ".mp4",
-    ".aac", ".wma", ".webm", ".aiff", ".aif", ".aifc", ".caf", ".amr", ".3gp",
-}
 FALLBACK_EXTENSION = ".bin"
 
 # What a dataset stem may look like. A UUID satisfies it, and so does a cleaned
-# shelf name. Leading dots and separators cannot match, so a stem can never
+# recording name. Leading dots and separators cannot match, so a stem can never
 # climb out of the dataset directory.
 _STEM_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 
@@ -83,9 +84,6 @@ class Entry:
     annotation_path: Path
     meta_path: Path | None = None
     audio_path: Path | None = None
-    # "dataset" (a copy sits beside the annotation), "audios" (found on the
-    # shelf), or "missing" (nothing to play).
-    audio_source: str = "missing"
     meta: dict[str, Any] = field(default_factory=dict)
     segments: list[Segment] = field(default_factory=list)
     problems: list[ann.LineProblem] = field(default_factory=list)
@@ -93,6 +91,16 @@ class Entry:
     # hand-edit that lost a brace. Worth saying out loud rather than treating
     # the entry as one that never had metadata.
     meta_error: str | None = None
+
+    @property
+    def audio_is_upload(self) -> bool:
+        """Whether the annotator brought this audio, so removal may take it.
+
+        Only an entry that says so outright. Silence is not consent: an entry
+        with no sidecar, or one written before the field existed, keeps its
+        recording, because destroying one is the mistake that cannot be undone.
+        """
+        return self.meta.get("audioSource") == "upload"
 
     @property
     def speakers(self) -> list[str]:
@@ -122,7 +130,7 @@ class Entry:
             "speakerCount": len(self.speakers),
             "speakers": self.speakers,
             "originalFilename": self.meta.get("originalFilename"),
-            "audioSource": self.audio_source,
+            "audioIsUpload": self.audio_is_upload,
             "hasAudio": self.audio_path is not None,
             "hasMeta": self.meta_path is not None,
             "metaError": self.meta_error,
@@ -147,30 +155,27 @@ class Entry:
         }
 
 
-def audio_for(stem: str, dataset_dir: Path, audios_dir: Path) -> tuple[Path | None, str]:
-    """Where this entry's audio is: beside the annotation, on the shelf, nowhere.
+def audio_for(stem: str, dataset_dir: Path, recording: str | None = None) -> Path | None:
+    """This entry's audio, or ``None`` if the folder holds none.
 
-    ``dataset/`` wins when both exist. It is the copy the entry was filed with,
-    and the shelf is a folder people add to and take from -- a name that
-    matches there is a good guess, not a guarantee it is the same recording.
+    ``recording`` is the file whose cleaned name is this stem. A recording keeps
+    its own name -- ``meeting 01.wav`` is annotated as ``meeting_01.txt`` -- so
+    the stem alone would not find it. An audio file actually named after the
+    stem still wins: that is the copy the entry was filed with.
     """
     for path in sorted(dataset_dir.glob(f"{stem}.*")):
         if path.is_file() and path.suffix.lower() in ALLOWED_EXTENSIONS:
-            return path, "dataset"
-
-    # Late import: library.py imports ALLOWED_EXTENSIONS from this module.
-    from . import library as library_mod
-
-    name = library_mod.name_for_entry(audios_dir, stem)
-    if name:
-        path = library_mod.resolve(audios_dir, name)
-        if path is not None:
-            return path, "audios"
-
-    return None, "missing"
+            return path
+    if recording:
+        path = dataset_dir / recording
+        if path.is_file():
+            return path
+    return None
 
 
-def read_entry(stem: str, dataset_dir: Path, audios_dir: Path) -> Entry | None:
+def read_entry(
+    stem: str, dataset_dir: Path, *, recordings: dict[str, str] | None = None
+) -> Entry | None:
     """Load one entry, or ``None`` if there is no annotation under that stem.
 
     The ``.txt`` is what makes an entry exist: it is the work. Audio without an
@@ -203,14 +208,19 @@ def read_entry(stem: str, dataset_dir: Path, audios_dir: Path) -> Entry | None:
     else:
         meta_path = None
 
-    audio_path, audio_source = audio_for(cleaned, dataset_dir, audios_dir)
+    # The caller may already have walked the folder for the whole table;
+    # walking it again per row would cost one pass per entry.
+    recording = (
+        recordings.get(cleaned) if recordings is not None
+        else library_mod.name_for_entry(dataset_dir, cleaned)
+    )
+    audio_path = audio_for(cleaned, dataset_dir, recording)
 
     return Entry(
         stem=cleaned,
         annotation_path=annotation_path,
         meta_path=meta_path,
         audio_path=audio_path,
-        audio_source=audio_source,
         meta=meta,
         segments=segments,
         problems=problems,
@@ -218,16 +228,17 @@ def read_entry(stem: str, dataset_dir: Path, audios_dir: Path) -> Entry | None:
     )
 
 
-def list_entries(dataset_dir: Path, audios_dir: Path) -> list[Entry]:
+def list_entries(dataset_dir: Path) -> list[Entry]:
     """Every entry in the folder, newest save first, unknown dates last."""
     if not dataset_dir.is_dir():
         return []
 
+    recordings = library_mod.names_by_entry(dataset_dir)
     entries = []
     for path in dataset_dir.glob("*.txt"):
         if not path.is_file():
             continue
-        entry = read_entry(path.stem, dataset_dir, audios_dir)
+        entry = read_entry(path.stem, dataset_dir, recordings=recordings)
         if entry is not None:
             entries.append(entry)
 
@@ -289,7 +300,9 @@ def write_entry(
     if duration and duration > 0:
         meta["durationSeconds"] = round(float(duration), 3)
     meta.setdefault("durationSeconds", round(max((s.end for s in ordered), default=0.0), 3))
-    meta.setdefault("audioSource", "dataset" if audio_bytes is not None else "unknown")
+    # A pair filed here is an upload like any other, which is what makes its
+    # audio this entry's to delete later. Anything else keeps what it had.
+    meta.setdefault("audioSource", "upload" if audio_bytes is not None else "unknown")
     meta.setdefault("savedAt", _now())
     meta.setdefault("annotator", None)
 
@@ -315,20 +328,25 @@ def write_entry(
     )
 
 
-def remove_entry(dataset_dir: Path, stem: str) -> list[str]:
-    """Delete every file of one entry from ``dataset/``. Returns what went.
+def remove_entry(dataset_dir: Path, stem: str, *, keep_audio: bool = False) -> list[str]:
+    """Delete the files of one entry from ``dataset/``. Returns what went.
 
-    ``dataset/`` only. A shelf file the entry was made against is somebody's
-    source audio, and deleting an annotation is not a reason to destroy it.
+    ``keep_audio`` spares the recording. It is for an entry annotating audio the
+    dataset already held: that is somebody's source recording, and deleting an
+    annotation is not a reason to destroy it. Annotation and recording share a
+    folder, so this is the only thing standing between the two.
     """
     cleaned = clean_stem(stem)
     if not cleaned or not dataset_dir.is_dir():
         return []
     removed = []
     for path in sorted(dataset_dir.glob(f"{cleaned}.*")):
-        if path.is_file() and path.parent == dataset_dir:
-            path.unlink()
-            removed.append(path.name)
+        if not (path.is_file() and path.parent == dataset_dir):
+            continue
+        if keep_audio and path.suffix.lower() in ALLOWED_EXTENSIONS:
+            continue
+        path.unlink()
+        removed.append(path.name)
     return removed
 
 
