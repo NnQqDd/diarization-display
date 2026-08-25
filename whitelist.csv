@@ -1,0 +1,11 @@
+# Browsers allowed to save, edit and delete in this app. Everyone else can
+# look and can change nothing -- including, until a line is added below,
+# you.
+#
+# The id is printed at the top right of the page itself; click it to copy.
+# It belongs to one browser profile on one machine, so a colleague on two
+# machines needs two lines. The name is only a label for this file and for
+# the greeting on the page; leave it blank if you like.
+#
+# Saved edits apply on the next request. No restart.
+client_id,user_name

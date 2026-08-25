@@ -16,9 +16,16 @@
     <h1>Diarization Dataset</h1>
     <span class="pill readonly" title="This page can overwrite and delete other people's annotations">admin</span>
   </div>
+  <div class="topbar-status">
+    <span class="pill" id="rolePill" hidden></span>
+    <button type="button" class="pill idchip" id="clientIdChip" hidden></button>
+  </div>
 </header>
 
 <main class="page">
+
+  <!-- Only when this browser may not change anything ------------------------->
+  <p class="notice" id="accessNotice" hidden></p>
 
   <!-- 1. Pick something to open ---------------------------------------------->
   <section class="card" id="browseCard">

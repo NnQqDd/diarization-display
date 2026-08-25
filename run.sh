@@ -35,6 +35,11 @@ command -v ffprobe >/dev/null || \
 "$PYTHON" - <<'PY'
 from app.config import settings
 print(f"dataset     {settings.dataset_dir}{'' if settings.dataset_ok else '   (NOT FOUND)'}")
+
+from app.access import roster
+white = roster(settings.whitelist_path)
+print(f"editors     {len(white.names)} in {settings.whitelist_path}"
+      f"{'' if white.exists else '   (NOT FOUND -- nobody can edit)'}")
 PY
 
 args=(-m uvicorn app.main:app --host "$HOST" --port "$PORT")

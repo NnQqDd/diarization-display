@@ -33,6 +33,44 @@ anything else is validated against the times in its annotation).
 | `PORT` | `8200` | |
 | `HOST` | `127.0.0.1` | Leave it |
 | `MAX_UPLOAD_MB` | `1024` | Ceiling on an uploaded pair's audio |
+| `WHITELIST_CSV` | `./whitelist.csv` | Browsers allowed to change anything |
+| `BLACKLIST_CSV` | `./blacklist.csv` | Browsers refused the page |
+
+## Who may edit
+
+This app can overwrite and delete other people's finished annotation, so by
+default nobody can. Editing is granted per browser, in `whitelist.csv`:
+
+```csv
+client_id,user_name
+0fdb05da-7ac6-4c24-ba76-7d6cfb09f2f9,Duy
+7fee2aa2-cab0-44ce-8b40-741850d738fd,
+```
+
+The id is at the top right of the page — click it to copy. Anyone who opens
+the app sees their own, along with the line to send you, so the whole exchange
+is a paste into this file. The name is a label; leave it blank if you like.
+Both files are re-read when they change, so a new line applies immediately.
+No restart.
+
+Everyone else gets the app read-only: they can open, play, filter and inspect
+every entry, and Save and Delete are refused — in the buttons and again in the
+server, which is the one that counts.
+
+`blacklist.csv` is the same two columns and refuses the page outright, before
+any of it is served. It beats the whitelist: an id on both lists is blocked.
+
+**What this is and is not.** The id is a UUID the browser keeps in
+`localStorage`. It identifies a browser profile, not a person: it resets when
+site data is cleared, differs per browser and in private windows, and anyone
+who can reach the server can claim any id they like. It is a lock on an office
+door — it stops the wrong colleague deleting a week of work, and stops nothing
+else. The perimeter is still that this app binds to localhost.
+
+**If nobody can edit,** the whitelist is missing, empty or does not have your
+id in it. That is deliberate: a whitelist that fails open when its file gets
+renamed is not a whitelist. The page tells you the id and the path; put the
+one in the other.
 
 ## What an entry is
 
@@ -109,7 +147,9 @@ app/
   library.py    the dataset's audio — a copy, so both apps clean a name identically
   audio.py      ffprobe duration
   identity.py   who made an edit
+  access.py     the two lists: who may edit, who is refused
 static/         index.html, css/, js/ (no build step, no CDN)
+deploy/         systemd unit, nginx vhost, and a walkthrough that uses both
 ```
 
 `annotation.js`, `segments.js`, `speakers.js`, `waveform.js` and `app.css` are
@@ -123,6 +163,7 @@ reader the writing-only app has no use for.
 | Route | Purpose |
 |---|---|
 | `GET /api/config` | which folders were resolved, and whether they exist |
+| `GET /api/access` | what this browser may do, and the id and path to change it |
 | `GET /api/entries` | every entry, newest first |
 | `GET /api/entries/{stem}` | one entry: sidecar, segments, unparseable lines |
 | `GET /api/entries/{stem}/audio` | its audio, from wherever it was found |
@@ -130,6 +171,24 @@ reader the writing-only app has no use for.
 | `POST /api/entries` | file an uploaded pair as a new entry |
 | `DELETE /api/entries/{stem}` | remove the entry from `dataset/` |
 | `POST /api/parse` | read an uploaded `.txt` into segments |
+
+## Running it somewhere
+
+`deploy/` holds a systemd unit that keeps the app up on localhost, an nginx
+vhost to put in front of it, and `deploy.example.sh`, which walks through both
+plus certbot. Read that script rather than running it blind — the last step
+publishes this app on a public name.
+
+Two things to weigh first, because neither is fixed by `whitelist.csv`:
+
+- **Reading is not gated.** Anyone who is not blacklisted can open every
+  entry, and that includes each annotator's IP address and user agent. Only
+  changing things is restricted.
+- **The lists identify browsers, not people.** See the caveat above.
+
+If either matters, uncomment `auth_basic` in the vhost — it is the one thing
+in the request a caller cannot choose for itself — or skip the vhost entirely
+and reach it over `ssh -N -L 8200:127.0.0.1:8200 <host>`.
 
 ## Tests
 
@@ -149,7 +208,9 @@ server — and because it edits and deletes, **give it a copy**:
 mkdir -p /tmp/e2e-disp/dataset
 cp /path/to/dataset/* /tmp/e2e-disp/dataset/
 
-DATASET_DIR=/tmp/e2e-disp/dataset PORT=8200 ./run.sh &
+DATASET_DIR=/tmp/e2e-disp/dataset PORT=8200 \
+  WHITELIST_CSV=/tmp/e2e-disp/whitelist.csv \
+  BLACKLIST_CSV=/tmp/e2e-disp/blacklist.csv ./run.sh &
 E2E_UI=http://127.0.0.1:8200 E2E_DATASET=/tmp/e2e-disp/dataset \
   .venv/bin/python tests/e2e_browser.py
 ```
@@ -159,3 +220,6 @@ It expects the fixtures its header describes: an entry named `mixed` backed by
 a browser it asks the server which folder it is serving and refuses to run
 unless that is the folder you named and those fixtures are in it — a stale
 server holding the port is otherwise an easy way to edit real work by accident.
+The access lists get the same treatment: the suite writes itself on and off
+them to test being locked out, so it refuses to run against this checkout's
+own `whitelist.csv`.

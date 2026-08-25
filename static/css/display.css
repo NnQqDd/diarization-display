@@ -113,3 +113,43 @@ table.entries td { vertical-align: middle; }
 /* Unsaved edits ------------------------------------------------------------ */
 
 .foot-status.dirty { color: var(--warn); }
+
+/* Access ------------------------------------------------------------------- */
+
+.pill.editor { color: var(--good); border-color: rgba(63, 185, 80, .35); }
+
+.pill.idchip {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  cursor: pointer;
+  color: var(--text-dim);
+}
+.pill.idchip:hover { color: var(--text); border-color: var(--border-strong); }
+
+/* The one thing a read-only viewer needs: their id, and where it has to go. */
+.notice {
+  margin: 0 0 18px;
+  padding: 11px 14px;
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--text-dim);
+  background: var(--bg-sunken);
+  border: 1px solid rgba(210, 153, 34, .35);
+  border-left: 3px solid var(--warn);
+  border-radius: 8px;
+}
+.notice strong { color: var(--warn); }
+.notice code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+.notice-id { display: inline-block; margin-top: 5px; color: var(--text); user-select: all; }
+
+.blocked {
+  display: grid;
+  place-items: center;
+  height: 100vh;
+  text-align: center;
+  padding: 0 2rem;
+}
+.blocked h1 { font-size: 16px; margin-bottom: 8px; }
+.blocked p { color: var(--text-dim); font-size: 13.5px; }

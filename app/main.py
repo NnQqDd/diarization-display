@@ -3,6 +3,7 @@
 Route map
 ---------
 ``GET  /``                       the UI
+``GET  /api/access``             what this browser is allowed to do here
 ``GET  /api/config``             where the dataset is, and whether it is there
 ``GET  /api/entries``            every entry in dataset/, newest first
 ``GET  /api/entries/{stem}``     one entry: metadata, segments, parse problems
@@ -16,6 +17,11 @@ This app is for whoever runs the annotation effort, not for annotators. It
 shows the sidecar in full, IP addresses and user agents included, and it can
 overwrite and delete other people's work -- so it binds to localhost and is
 meant to stay there. Nothing here belongs on a public link.
+
+Every request passes ``_access_control`` first: a browser on ``blacklist.csv``
+is turned away at the door, and only a browser on ``whitelist.csv`` may make a
+request that writes. See ``app/access.py`` for what those lists can and cannot
+promise.
 """
 
 from __future__ import annotations
@@ -25,10 +31,11 @@ import json
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from . import access as access_mod
 from . import annotation as ann
 from . import audio as audio_mod
 from . import entry as entry_mod
@@ -41,6 +48,101 @@ app = FastAPI(title="Diarization Dataset Viewer", docs_url="/api/docs")
 app.mount("/static", StaticFiles(directory=settings.static_dir), name="static")
 
 
+# --------------------------------------------------------------------------- #
+# Access
+# --------------------------------------------------------------------------- #
+
+
+#: The two lists are re-read whenever they change, so every request gets the
+#: answer that is true right now -- which is worth nothing if the browser or a
+#: proxy in between serves an older one back. Granting and revoking both have
+#: to take effect on the next refresh.
+NO_STORE = {"Cache-Control": "no-store"}
+
+
+def _verdict(request: Request) -> access_mod.Verdict:
+    return access_mod.decide(
+        access_mod.client_id_from(request.headers, request.cookies),
+        whitelist=access_mod.roster(settings.whitelist_path),
+        blacklist=access_mod.roster(settings.blacklist_path),
+    )
+
+
+_BLOCKED_PAGE = """<!DOCTYPE html>
+<meta charset="utf-8"><title>Not available</title>
+<style>
+ body{background:#0d1117;color:#c9d1d9;font:15px/1.6 ui-sans-serif,system-ui,sans-serif;
+      display:grid;place-items:center;height:100vh;margin:0}
+ div{max-width:34rem;padding:0 2rem;text-align:center}
+ h1{font-size:1.1rem;margin:0 0 .6rem}
+ p{color:#8b949e;margin:0}
+</style>
+<div><h1>This page is not available to you.</h1>
+<p>If that is a mistake, ask whoever runs the annotation effort.</p></div>
+"""
+
+
+@app.middleware("http")
+async def _access_control(request: Request, call_next):
+    """The two lists, applied to everything, before any route sees the request.
+
+    Blanket rather than per-route on purpose: a guard you have to remember to
+    add to the next route is a guard that will be missing from the next route.
+    """
+    verdict = _verdict(request)
+    if verdict.blocked:
+        if request.url.path.startswith("/api/"):
+            return JSONResponse(
+                status_code=403,
+                content={"detail": {
+                    "message": "This browser is not allowed to use this app.",
+                    "access": "blocked",
+                }},
+                headers=NO_STORE,
+            )
+        return HTMLResponse(_BLOCKED_PAGE, status_code=403, headers=NO_STORE)
+
+    if access_mod.changes_data(request.method, request.url.path) and not verdict.may_edit:
+        return JSONResponse(
+            status_code=403,
+            content={"detail": {
+                "message": (
+                    "This browser can look but not change anything. Its id has "
+                    "to be added to whitelist.csv on the machine running this."
+                ),
+                "access": "readonly",
+            }},
+            headers=NO_STORE,
+        )
+    return await call_next(request)
+
+
+@app.get("/api/access")
+async def access(request: Request, response: Response) -> dict[str, Any]:
+    """What this browser may do, and everything needed to change the answer.
+
+    The id and the path to the file are both here because they are the two
+    halves of the only fix: an admin pastes the one into the other. Naming a
+    path is fine in this app -- the person reading this screen is the person
+    who set it.
+    """
+    response.headers.update(NO_STORE)
+    whitelist = access_mod.roster(settings.whitelist_path)
+    blacklist = access_mod.roster(settings.blacklist_path)
+    verdict = _verdict(request)
+    return {
+        "clientId": verdict.client_id,
+        "role": "editor" if verdict.may_edit else "viewer",
+        "userName": verdict.user_name,
+        "editorCount": len(whitelist.names),
+        "whitelistPath": str(whitelist.path),
+        "whitelistExists": whitelist.exists,
+        "blacklistPath": str(blacklist.path),
+        # Lines an admin meant as ids and this app did not read as ids.
+        "problems": list(whitelist.problems) + list(blacklist.problems),
+    }
+
+
 @app.exception_handler(ann.AnnotationError)
 async def _annotation_error(_request: Request, exc: ann.AnnotationError) -> JSONResponse:
     return JSONResponse(status_code=400, content={"detail": str(exc)})
@@ -48,7 +150,13 @@ async def _annotation_error(_request: Request, exc: ann.AnnotationError) -> JSON
 
 @app.get("/", include_in_schema=False)
 async def index() -> HTMLResponse:
-    return HTMLResponse((settings.static_dir / "index.html").read_text(encoding="utf-8"))
+    # Never cached, for the same reason as /api/access: whether this browser
+    # gets the app at all is a question answered by a file on disk, and a
+    # cached "yes" would outlive the answer.
+    return HTMLResponse(
+        (settings.static_dir / "index.html").read_text(encoding="utf-8"),
+        headers=NO_STORE,
+    )
 
 
 @app.get("/favicon.ico", include_in_schema=False)
@@ -75,6 +183,8 @@ async def config() -> dict[str, Any]:
         "ffmpeg": audio_mod.ffmpeg_available(),
         "annotationGrid": ANNOTATION_GRID,
         "maxUploadMb": settings.max_upload_bytes // (1024 * 1024),
+        "whitelistPath": str(settings.whitelist_path),
+        "blacklistPath": str(settings.blacklist_path),
     }
 
 

@@ -40,3 +40,20 @@ export function clientId() {
     return sessionFallback;
   }
 }
+
+/**
+ * Mirror the id into a cookie, so the plain page load carries it too.
+ *
+ * The header on `fetch` only reaches the API, and a browser that is refused
+ * this app should be refused the page, not the page's data after it has
+ * loaded. Same value, same origin, nothing else in it.
+ */
+export function mirrorToCookie() {
+  try {
+    document.cookie =
+      `clientId=${encodeURIComponent(clientId())}; path=/; max-age=31536000; SameSite=Lax`;
+  } catch {
+    // Cookies blocked. The header still covers every request the app makes;
+    // only the head start on the document request is lost.
+  }
+}

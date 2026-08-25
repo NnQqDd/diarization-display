@@ -5,14 +5,20 @@ edits and deletes entries, so point it at a copy, never at real work::
 
     mkdir -p /tmp/e2e-disp/dataset
     cp /path/to/real/dataset/* /tmp/e2e-disp/dataset/
-    DATASET_DIR=/tmp/e2e-disp/dataset PORT=8200 ./run.sh &
+    DATASET_DIR=/tmp/e2e-disp/dataset PORT=8200 \
+      WHITELIST_CSV=/tmp/e2e-disp/whitelist.csv \
+      BLACKLIST_CSV=/tmp/e2e-disp/blacklist.csv ./run.sh &
     E2E_UI=http://127.0.0.1:8200 E2E_DATASET=/tmp/e2e-disp/dataset \
       .venv/bin/python tests/e2e_browser.py
 
 The folder needs ``mixed.wav`` + ``mixed.txt`` + ``mixed.meta.json`` (whose
 ``audioSource`` is ``"dataset"``), and ``orphan.txt`` with no audio behind it.
 
-Environment overrides: E2E_UI, E2E_DATASET, E2E_SHOTS.
+The two access lists have to be scratch files too: this suite rewrites them to
+test being locked out, and it refuses to run against the checkout's own.
+
+Environment overrides: E2E_UI, E2E_DATASET, E2E_SHOTS, E2E_WHITELIST,
+E2E_BLACKLIST.
 """
 
 import os
@@ -25,10 +31,29 @@ ROOT = Path(__file__).resolve().parent.parent
 UI = os.environ.get("E2E_UI", "http://127.0.0.1:8200")
 DATASET = Path(os.environ.get("E2E_DATASET", ROOT.parent / "diarization-annotate" / "dataset"))
 SHOTS = Path(os.environ.get("E2E_SHOTS", ROOT / ".e2e-shots"))
+WHITELIST = Path(os.environ.get("E2E_WHITELIST", DATASET.parent / "whitelist.csv"))
+BLACKLIST = Path(os.environ.get("E2E_BLACKLIST", DATASET.parent / "blacklist.csv"))
+
+# A fixed browser id, seeded into localStorage before the app boots, so the
+# suite can put itself on and off the whitelist by name.
+CLIENT_ID = "e2e00000-1111-4222-8333-444444444444"
 SHOTS.mkdir(parents=True, exist_ok=True)
 
 problems: list[str] = []
 console_errors: list[str] = []
+
+# Chrome logs a failed resource load for every non-2xx response. The access
+# checks provoke 403s on purpose, so while this is on they are the suite
+# working rather than the app breaking. Everything else still counts.
+expect_forbidden = False
+
+
+def on_console(message) -> None:
+    if message.type != "error":
+        return
+    if expect_forbidden and "403" in message.text:
+        return
+    console_errors.append(message.text)
 
 
 def refuse(reason: str) -> None:
@@ -63,6 +88,24 @@ def guard() -> None:
             "  Something else is on that port. Stop it, or use another PORT."
         )
 
+    # The access lists get rewritten below, so they must be scratch files as
+    # much as the dataset is -- and they must be the ones the server actually
+    # read, or the suite would rewrite a file nothing is looking at.
+    for label, want, serving_path in (
+        ("whitelist", WHITELIST, config.get("whitelistPath")),
+        ("blacklist", BLACKLIST, config.get("blacklistPath")),
+    ):
+        if serving_path is None:
+            refuse(f"the server at {UI} does not report a {label} path")
+        served = Path(serving_path).resolve()
+        if served != want.resolve():
+            refuse(
+                f"the server is using {served} as its {label}, not {want}.\n"
+                f"  Start it with {label.upper()}_CSV={want}."
+            )
+        if ROOT in served.parents:
+            refuse(f"{served} is this checkout's own {label} — use a scratch copy")
+
     # Fixtures, not somebody's corpus: `mixed` is edited and `orphan` deleted.
     missing = [name for name in ("mixed.txt", "mixed.wav", "orphan.txt")
                if not (expected / name).is_file()]
@@ -74,6 +117,11 @@ def guard() -> None:
 
 
 guard()
+
+# Whitelisted from the start: everything below this line is an editor's
+# session, until the access checks at the end take that away.
+WHITELIST.write_text(f"client_id,user_name\n{CLIENT_ID},E2E Suite\n")
+BLACKLIST.write_text("client_id,user_name\n")
 
 
 def check(name, condition, detail=""):
@@ -100,8 +148,11 @@ def open_entry(page, stem, timeout=60_000):
 with sync_playwright() as playwright:
     browser = playwright.chromium.launch()
     page = browser.new_page(viewport={"width": 1500, "height": 1000})
-    page.on("console", lambda message: message.type == "error"
-            and console_errors.append(message.text))
+    # Before any of the app's own scripts run, so it adopts this id instead of
+    # inventing one.
+    page.add_init_script(
+        f"localStorage.setItem('diarization-annotate.clientId', '{CLIENT_ID}')")
+    page.on("console", on_console)
     page.on("pageerror", lambda error: console_errors.append(f"pageerror: {error}"))
     # Every confirm() in this app guards a discard; the suite always means yes.
     page.on("dialog", lambda dialog: dialog.accept())
@@ -135,6 +186,73 @@ with sync_playwright() as playwright:
           str(page.locator("#entriesBody tr").count()))
     page.fill("#entryFilter", "")
     page.wait_for_timeout(200)
+
+    # --- who is allowed to do any of this ----------------------------------
+    # Before the destructive half, while the fixtures are still here to be
+    # refused: take editing away and check the page says so, and that the
+    # server means it and not only the buttons.
+    expect_forbidden = True
+    check("an editor is told so", "editor" in page.inner_text("#rolePill"),
+          page.inner_text("#rolePill"))
+    check("and the browser id is on the page to copy",
+          page.locator("#clientIdChip").is_visible())
+
+    WHITELIST.write_text("client_id,user_name\n")
+    page.reload(wait_until="networkidle")
+    page.wait_for_function(
+        "() => document.getElementById('entriesBody').rows.length > 0", timeout=30_000)
+
+    check("off the whitelist, the page says read-only",
+          page.inner_text("#rolePill").strip() == "read-only",
+          page.inner_text("#rolePill"))
+    check("a read-only viewer can still open and read an entry",
+          page.locator("#entriesBody tr").count() > 0)
+    check("and is told the id to hand to the admin",
+          CLIENT_ID in page.inner_text("#accessNotice"),
+          page.inner_text("#accessNotice"))
+    page.screenshot(path=SHOTS / "09-readonly.png", full_page=True)
+
+    open_entry(page, "orphan")
+    page.fill('#segmentsBody tr:first-child [data-field="text"]', "a read-only edit")
+    page.press('#segmentsBody tr:first-child [data-field="text"]', "Enter")
+    page.wait_for_timeout(300)
+    check("editing is possible but Save is not",
+          page.locator("#saveBtn").is_disabled())
+    check("and Delete is not either", page.locator("#deleteBtn").is_disabled())
+
+    # The buttons are the polite half. This is the half that matters.
+    orphan_before = (DATASET / "orphan.txt").read_text()
+    status = page.evaluate(
+        """async () => (await fetch('/api/entries/orphan', {
+             method: 'PUT',
+             headers: {'Content-Type': 'application/json'},
+             body: JSON.stringify({segments: [{speaker: 'x', start: 0, end: 1}],
+                                   audioStart: 0, audioEnd: 9}),
+           })).status""")
+    check("and the server refuses the request behind them", status == 403, str(status))
+    check("so the annotation on disk is untouched",
+          (DATASET / "orphan.txt").read_text() == orphan_before)
+
+    BLACKLIST.write_text(f"client_id,user_name\n{CLIENT_ID},Blocked\n")
+    page.reload(wait_until="networkidle")
+    page.wait_for_timeout(500)
+    body = page.inner_text("body")
+    check("blacklisted, the page itself is refused",
+          "not available" in body.lower(), body[:120])
+    check("and none of the app is on it", page.locator("#entriesBody").count() == 0)
+    page.screenshot(path=SHOTS / "10-blocked.png", full_page=True)
+
+    # Put the lists back the way the suite found them.
+    BLACKLIST.write_text("client_id,user_name\n")
+    WHITELIST.write_text(f"client_id,user_name\n{CLIENT_ID},E2E Suite\n")
+    page.reload(wait_until="networkidle")
+    page.wait_for_timeout(500)
+    check("removing the block gives the page back",
+          page.locator("#rolePill").inner_text().startswith("editor"),
+          page.inner_text("#rolePill"))
+    page.wait_for_function(
+        "() => document.getElementById('entriesBody').rows.length > 0", timeout=30_000)
+
 
     # --- an entry whose audio the dataset already held ---------------------
     served = page.request.get(f"{UI}/api/entries/mixed/audio")

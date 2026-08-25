@@ -22,7 +22,7 @@ import {
   validateSegments,
 } from './annotation.js';
 import { api } from './api.js';
-import { clientId } from './identity.js';
+import { clientId, mirrorToCookie } from './identity.js';
 import { SegmentTable } from './segments.js';
 import { SpeakerTable } from './speakers.js';
 import { Waveform } from './waveform.js';
@@ -30,6 +30,13 @@ import { Waveform } from './waveform.js';
 const $ = (id) => document.getElementById(id);
 
 const state = {
+  // --- what this browser may do ------------------------------------------
+  // Read-only until the server says otherwise. Assuming the better answer
+  // and finding out on save would mean losing the edits that got made in
+  // the meantime.
+  canEdit: false,
+  access: null,
+
   // --- the browser -------------------------------------------------------
   entries: [],
   entrySort: 'savedAt',
@@ -110,6 +117,8 @@ function init() {
   bindPair();
   bindPlayer();
   bindToolbar();
+  mirrorToCookie();
+  loadAccess();
   loadConfig();
   loadEntries();
 
@@ -119,6 +128,91 @@ function init() {
     if (!isDirty()) return;
     event.preventDefault();
     event.returnValue = '';
+  });
+}
+
+/* ------------------------------------------------------------------ access */
+
+/**
+ * Ask what this browser may do here, and show the answer.
+ *
+ * Called at startup and again whenever the server refuses something: the two
+ * lists are files an admin edits while this page is open, so the answer can
+ * change under a session that is still running.
+ */
+async function loadAccess() {
+  try {
+    applyAccess(await api.access());
+  } catch (error) {
+    if (error.payload?.access === 'blocked') {
+      showBlocked();
+      return;
+    }
+    // Anything else -- the server being down, mostly. Stay read-only and let
+    // loadEntries be the one to say the server is unreachable.
+    applyAccess(null);
+  }
+}
+
+function applyAccess(info) {
+  state.access = info;
+  state.canEdit = info?.role === 'editor';
+
+  const pill = $('rolePill');
+  pill.hidden = false;
+  pill.textContent = state.canEdit
+    ? (info.userName ? `editor · ${info.userName}` : 'editor')
+    : 'read-only';
+  pill.className = `pill ${state.canEdit ? 'editor' : 'readonly'}`;
+  pill.title = state.canEdit
+    ? 'This browser is on the whitelist and may save, edit and delete.'
+    : 'This browser can look at everything and change nothing.';
+
+  const chip = $('clientIdChip');
+  const id = info?.clientId || clientId();
+  chip.hidden = false;
+  chip.textContent = shorten(id, 8);
+  chip.dataset.clientId = id;
+  chip.title = `${id}\nClick to copy — this is the line for whitelist.csv`;
+
+  const notice = $('accessNotice');
+  if (state.canEdit) {
+    notice.hidden = true;
+  } else {
+    // The id, and nothing about where it goes: whoever can act on it knows,
+    // and everyone else is only being shown a stranger's filesystem.
+    notice.innerHTML =
+      '<strong>Read-only.</strong> You can open and play everything here, and ' +
+      'nothing you change will be saved.' +
+      `<br><code class="notice-id">${escapeHtml(id)},your name</code>`;
+    notice.hidden = false;
+  }
+
+  onAnnotationChanged({ reorder: false });
+}
+
+/** Replace the page. Nothing here is for someone the server turned away. */
+function showBlocked() {
+  document.body.innerHTML =
+    '<div class="blocked"><h1>This page is not available to you.</h1>' +
+    '<p>If that is a mistake, ask whoever runs the annotation effort.</p></div>';
+}
+
+function copyClientId() {
+  const chip = $('clientIdChip');
+  const id = chip.dataset.clientId || '';
+  const done = () => {
+    const was = chip.textContent;
+    chip.textContent = 'copied';
+    setTimeout(() => { chip.textContent = was; }, 1200);
+  };
+  navigator.clipboard?.writeText(id).then(done, () => {
+    // Clipboard refused (an insecure origin, usually). Select it instead, so
+    // the id can still be copied by hand.
+    const range = document.createRange();
+    range.selectNodeContents($('accessNotice').querySelector('.notice-id') || chip);
+    getSelection().removeAllRanges();
+    getSelection().addRange(range);
   });
 }
 
@@ -765,6 +859,7 @@ function bindToolbar() {
     table.setMilliseconds(state.milliseconds);
   });
 
+  $('clientIdChip').addEventListener('click', copyClientId);
   $('addSegment').addEventListener('click', addSegment);
   $('saveBtn').addEventListener('click', save);
   $('revertBtn').addEventListener('click', revert);
@@ -883,12 +978,19 @@ function onAnnotationChanged({ reorder = false } = {}) {
   const dirty = isDirty();
 
   $('saveBtn').disabled =
-    state.loading || invalid || !state.segments.length || !dirty;
+    !state.canEdit || state.loading || invalid || !state.segments.length || !dirty;
   $('revertBtn').disabled = state.loading || !dirty || state.source !== 'dataset';
-  $('deleteBtn').disabled = state.loading || !state.source;
+  // Discarding an unfiled pair only closes this page's copy of it, so that
+  // stays available to everyone. Deleting an entry does not.
+  $('deleteBtn').disabled = state.loading || !state.source
+    || (!state.canEdit && state.source === 'dataset');
 
   const status = $('saveStatus');
-  if (invalid) {
+  if (!state.canEdit && dirty) {
+    status.textContent = 'Read-only — this browser cannot save. Your edits are '
+      + 'only on this screen.';
+    status.className = 'foot-status bad';
+  } else if (invalid) {
     status.textContent = 'Fix the highlighted segments before saving.';
     status.className = 'foot-status bad';
   } else if (state.source === 'pair') {
@@ -924,7 +1026,7 @@ function annotationPayload() {
 }
 
 async function save() {
-  if (!state.segments.length || !state.source) return;
+  if (!state.segments.length || !state.source || !state.canEdit) return;
   const button = $('saveBtn');
   state.loading = true;
   busy(button, true);
@@ -969,6 +1071,9 @@ async function save() {
     $('saveStatus').textContent = error.message;
     $('saveStatus').className = 'foot-status bad';
     toast('Save failed', escapeHtml(error.message), 'bad');
+    // The lists are files somebody edits while this page is open, so a refusal
+    // may simply be news. Re-read it, and the footer says so from here on.
+    if (error.status === 403) await loadAccess();
   } finally {
     state.loading = false;
     busy(button, false);
@@ -1011,6 +1116,7 @@ function disarmRemove() {
 
 async function removeEntry() {
   if (!state.source) return;
+  if (state.source === 'dataset' && !state.canEdit) return;
 
   // An unfiled pair is only in this page; closing it costs nobody anything.
   if (state.source === 'pair') {
@@ -1047,6 +1153,7 @@ async function removeEntry() {
     );
   } catch (error) {
     toast('Delete failed', escapeHtml(error.message), 'bad');
+    if (error.status === 403) await loadAccess();
   } finally {
     state.loading = false;
     busy(button, false);

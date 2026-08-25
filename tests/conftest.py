@@ -17,8 +17,15 @@ from fastapi.testclient import TestClient
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from app import access as access_mod       # noqa: E402
 from app import main as main_mod           # noqa: E402
 from app.config import Settings            # noqa: E402
+
+#: The browser every test speaks as, unless it says otherwise. It is on the
+#: whitelist, because the interesting thing about most of these tests is what
+#: an editor can do; who may edit is tested on its own.
+EDITOR_ID = "e0e0e0e0-1111-4222-8333-444444444444"
+OUTSIDER_ID = "0d0d0d0d-2222-4333-8444-555555555555"
 
 
 def make_wav(seconds: float = 6.0, rate: int = 8000) -> bytes:
@@ -59,6 +66,27 @@ META = {
 }
 
 
+@pytest.fixture(autouse=True)
+def _fresh_rosters():
+    """The roster cache keys on mtime, which tests rewrite faster than."""
+    access_mod.forget_rosters()
+    yield
+    access_mod.forget_rosters()
+
+
+@pytest.fixture
+def whitelist(tmp_path: Path) -> Path:
+    path = tmp_path / "whitelist.csv"
+    path.write_text(f"client_id,user_name\n{EDITOR_ID},Test Admin\n")
+    return path
+
+
+@pytest.fixture
+def blacklist(tmp_path: Path) -> Path:
+    """Deliberately not written: an absent list blocks nobody."""
+    return tmp_path / "blacklist.csv"
+
+
 @pytest.fixture
 def dataset(tmp_path: Path) -> Path:
     path = tmp_path / "dataset"
@@ -67,15 +95,24 @@ def dataset(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def client(monkeypatch, tmp_path: Path, dataset: Path) -> TestClient:
+def client(monkeypatch, tmp_path: Path, dataset: Path,
+           whitelist: Path, blacklist: Path) -> TestClient:
     settings = Settings(
         annotate_path=tmp_path,
         dataset_dir=dataset,
         static_dir=Path(__file__).resolve().parent.parent / "static",
         max_upload_bytes=16 * 1024 * 1024,
+        whitelist_path=whitelist,
+        blacklist_path=blacklist,
     )
     monkeypatch.setattr(main_mod, "settings", settings)
-    return TestClient(main_mod.app)
+    return TestClient(main_mod.app, headers={"X-Client-Id": EDITOR_ID})
+
+
+@pytest.fixture
+def viewer(client: TestClient) -> TestClient:
+    """The same server, seen by a browser nobody has whitelisted."""
+    return TestClient(main_mod.app, headers={"X-Client-Id": OUTSIDER_ID})
 
 
 @pytest.fixture

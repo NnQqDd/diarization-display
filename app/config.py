@@ -74,6 +74,9 @@ class Settings:
     dataset_dir: Path
     static_dir: Path
     max_upload_bytes: int
+    # Who may edit, and who is refused the page. See app/access.py.
+    whitelist_path: Path
+    blacklist_path: Path
 
     @property
     def dataset_ok(self) -> bool:
@@ -92,6 +95,10 @@ def load_settings() -> Settings:
         dataset_dir=dataset_dir,
         static_dir=ROOT / "static",
         max_upload_bytes=_env_int("MAX_UPLOAD_MB", 1024) * 1024 * 1024,
+        # Beside the checkout, next to .env, because they are the same kind of
+        # thing: settled once on the machine that runs this.
+        whitelist_path=_env_path("WHITELIST_CSV", ROOT / "whitelist.csv"),
+        blacklist_path=_env_path("BLACKLIST_CSV", ROOT / "blacklist.csv"),
     )
 
 

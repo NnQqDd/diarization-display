@@ -1,0 +1,6 @@
+# Browsers refused this page outright -- no list, no player, nothing.
+#
+# Same two columns as whitelist.csv, and the blacklist wins: an id on both
+# is blocked. Bear in mind what is being blocked is a browser profile, not
+# a person: clearing site data earns a new id and a fresh start.
+client_id,user_name

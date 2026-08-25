@@ -1,0 +1,68 @@
+# Reverse proxy for the dataset viewer/editor, alongside the annotation UI's
+# own vhost (diar-ann) on this host.
+#
+# server_name must be a name that already resolves to this machine, or certbot
+# cannot validate it. A *.blaze.vn subdomain needs an A record added in the
+# 101domain panel; with no DNS access, use a sslip.io hostname such as
+# diar-dis.34.124.243.65.sslip.io, which resolves without anyone's help.
+#
+# Know what you are publishing. This app is not the annotation UI:
+#
+#   * It can overwrite and delete other people's finished work. Only browsers
+#     listed in whitelist.csv can, and by default that file is empty -- so the
+#     first thing to do after deploying is open the page, copy the id it shows
+#     at the top right, and paste it in. See "Who may edit" in README.md.
+#   * Anyone who is not blacklisted can *read* everything, and everything
+#     includes each annotator's IP address and user agent, and the server's
+#     own filesystem paths. The lists do not gate reading. If that is not
+#     acceptable on a public name, put auth_basic below in front of the whole
+#     vhost, or keep this on localhost and reach it over an SSH tunnel:
+#     ssh -N -L 8200:127.0.0.1:8200 <this host>
+
+server {
+    server_name diar-dis.blaze.vn;
+
+    # An uploaded pair carries a whole audio file; nginx's 1 MB default would
+    # reject it with a 413 before the app ever sees it. Keep this above
+    # MAX_UPLOAD_MB (default 1024) so an oversized file gets the app's
+    # readable error rather than nginx's bare 413 page.
+    client_max_body_size 1200M;
+
+    location / {
+        proxy_pass http://127.0.0.1:8200;
+
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        # Deliberately not $proxy_add_x_forwarded_for. That appends to
+        # whatever the client sent, and the app reads the first entry -- so on
+        # a public vhost with nothing in front of nginx, a caller could put any
+        # address they liked in somebody's sidecar. nginx is the edge here, so
+        # the address it observed is the whole truth.
+        proxy_set_header X-Forwarded-For   $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        # The basic-auth name nginx validated, recorded with each edit. Empty
+        # unless the auth_basic lines below are switched on -- and note that
+        # while they are off, a caller can send its own Authorization header
+        # and have that name recorded instead. Nothing is decided by it.
+        proxy_set_header X-Auth-User       $remote_user;
+        proxy_http_version 1.1;
+
+        # Measuring a long recording is ffprobe work, not GPU work, so these
+        # are generous rather than necessary.
+        proxy_read_timeout    300s;
+        proxy_send_timeout    300s;
+        proxy_connect_timeout 75s;
+
+        # Streaming audio back to the player, and answering the range requests
+        # that make seeking cheap, should not be buffered whole.
+        proxy_buffering off;
+
+        # Uncomment to put a login in front of the whole app, after:
+        #   sudo htpasswd -c /etc/nginx/.htpasswd-diarize <user>
+        # This is the only thing here that a caller cannot choose for itself.
+        # auth_basic           "Diarization dataset";
+        # auth_basic_user_file /etc/nginx/.htpasswd-diarize;
+    }
+
+    listen 80;
+}

@@ -1,0 +1,52 @@
+# Keep the dataset viewer/editor running across logouts and reboots.
+#
+#   sudo cp deploy/diarization-display.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now diarization-display
+#   systemctl status diarization-display
+#   journalctl -u diarization-display -f
+#
+# Bound to localhost on purpose: nginx (see nginx.conf.example) is what faces
+# the internet. Read nginx.conf.example before exposing this one -- it can
+# overwrite and delete other people's finished annotation, and it shows every
+# annotator's IP address and user agent to anyone who can load the page.
+
+[Unit]
+Description=Diarization dataset viewer and editor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=duyn
+Group=duyn
+WorkingDirectory=/home/duyn/ActableDuy/diarization-display
+
+# The dataset comes from ANNOTATEPATH in .env, which is read out of
+# WorkingDirectory. Uncomment to point somewhere else without editing it.
+# Environment=DATASET_DIR=/srv/diarization/dataset
+
+# Who may edit, and who is refused the page. The defaults are whitelist.csv
+# and blacklist.csv beside the checkout; put them somewhere root-owned if the
+# checkout is writable by the people the lists are about.
+# Environment=WHITELIST_CSV=/etc/diarization/whitelist.csv
+# Environment=BLACKLIST_CSV=/etc/diarization/blacklist.csv
+
+# Logs go to the journal as they happen rather than when a buffer fills.
+Environment=PYTHONUNBUFFERED=1
+
+# Four workers behind the one port. Reading an entry decodes and measures
+# audio, so one long file would otherwise stall everybody else's list. Each
+# worker keeps its own copy of the two access lists and re-reads them the
+# moment the file changes, so adding a colleague still applies to every worker
+# on their next request -- no reload of this unit needed.
+ExecStart=/home/duyn/ActableDuy/diarization-display/.venv/bin/uvicorn \
+    app.main:app --host 127.0.0.1 --port 8200 --workers 4
+
+Restart=always
+RestartSec=3
+KillSignal=SIGINT
+TimeoutStopSec=20
+
+[Install]
+WantedBy=multi-user.target

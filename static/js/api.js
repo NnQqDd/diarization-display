@@ -1,5 +1,7 @@
 /** Thin wrapper over the backend JSON API. */
 
+import { clientId } from './identity.js';
+
 class ApiError extends Error {
   constructor(message, status, payload) {
     super(message);
@@ -24,10 +26,23 @@ async function readError(response) {
   return new ApiError(message, response.status, detail);
 }
 
+/**
+ * Every request says which browser it is from.
+ *
+ * A header rather than a body field, so it is on reads as well as writes and
+ * on the multipart uploads too -- the server decides what this browser may do
+ * before it looks at what the request wants to do.
+ */
+function withIdentity(options) {
+  const headers = new Headers(options.headers || {});
+  headers.set('X-Client-Id', clientId());
+  return { ...options, headers };
+}
+
 async function request(url, options = {}) {
   let response;
   try {
-    response = await fetch(url, options);
+    response = await fetch(url, withIdentity(options));
   } catch (cause) {
     throw new ApiError('Could not reach the viewer server.', 0, String(cause));
   }
@@ -43,6 +58,9 @@ const json = (method, body) => ({
 
 export const api = {
   ApiError,
+
+  /** What this browser may do here, and how to change the answer. */
+  access: () => request('/api/access'),
 
   config: () => request('/api/config'),
 
