@@ -41,7 +41,7 @@ Environment=PYTHONUNBUFFERED=1
 # moment the file changes, so adding a colleague still applies to every worker
 # on their next request -- no reload of this unit needed.
 ExecStart=/home/duyn/ActableDuy/diarization-display/.venv/bin/uvicorn \
-    app.main:app --host 127.0.0.1 --port 8200 --workers 4
+    app.main:app --host 127.0.0.1 --port 8222 --workers 4
 
 Restart=always
 RestartSec=3

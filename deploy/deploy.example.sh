@@ -9,7 +9,7 @@ set -euo pipefail
 
 # A name that already resolves to this machine. sslip.io encodes the address
 # in the name, so it needs no DNS panel and no waiting.
-HOST="${HOST:-diar-dis.34.124.243.65.sslip.io}"
+HOST="${HOST:-diar-dis.103.164.226.13.sslip.io}"
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 cd "$REPO"
@@ -18,21 +18,42 @@ cd "$REPO"
 echo "==> $HOST resolves to: $(dig +short A "$HOST" @8.8.8.8)"
 echo "    (that must be this machine's address)"
 
-# 2. The app itself, on localhost, kept up across reboots.
+# 2. The unit runs .venv/bin/uvicorn. Create it the same way run.sh does, or
+# systemd fails with 203/EXEC and Restart=always turns that into a crash loop.
+if [[ ! -x .venv/bin/uvicorn ]]; then
+  echo "==> creating .venv and installing requirements"
+  python3 -m venv .venv
+  .venv/bin/pip install --quiet --upgrade pip
+  .venv/bin/pip install --quiet -r requirements.txt
+fi
+if [[ ! -f .env ]]; then
+  echo "==> copying .env.example -> .env (edit ANNOTATEPATH if the dataset is elsewhere)"
+  cp .env.example .env
+fi
+
+# 3. The app itself, on localhost, kept up across reboots.
 sudo cp deploy/diarization-display.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now diarization-display
+# Four workers need a moment to bind; 203/EXEC would otherwise look like a
+# successful enable followed by a failed curl.
+for _ in $(seq 1 20); do
+  if curl -fsS -o /dev/null http://127.0.0.1:8222/; then
+    break
+  fi
+  sleep 0.25
+done
 sudo systemctl --no-pager --lines=0 status diarization-display
-curl -fsS -o /dev/null -w '   localhost: %{http_code}\n' http://127.0.0.1:8200/
+curl -fsS -o /dev/null -w '   localhost: %{http_code}\n' http://127.0.0.1:8222/
 
-# 3. nginx in front of it. The vhost ships with a placeholder server_name.
+# 4. nginx in front of it. The vhost ships with a placeholder server_name.
 sudo cp deploy/nginx.conf.example /etc/nginx/conf.d/diar-dis.conf
 sudo sed -i "s/diar-dis\.blaze\.vn/$HOST/" /etc/nginx/conf.d/diar-dis.conf
 sudo nginx -t
 sudo systemctl reload nginx
 curl -fsS -o /dev/null -w '   over http: %{http_code}\n' "http://$HOST/"
 
-# 4. TLS. certbot rewrites the vhost in place and adds the :443 server block.
+# 5. TLS. certbot rewrites the vhost in place and adds the :443 server block.
 sudo certbot --nginx -d "$HOST"
 curl -fsS -o /dev/null -w '   over https: %{http_code}\n' "https://$HOST/"
 

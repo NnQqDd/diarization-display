@@ -4,7 +4,7 @@
 # server_name must be a name that already resolves to this machine, or certbot
 # cannot validate it. A *.blaze.vn subdomain needs an A record added in the
 # 101domain panel; with no DNS access, use a sslip.io hostname such as
-# diar-dis.34.124.243.65.sslip.io, which resolves without anyone's help.
+# diar-dis.103.164.226.13.sslip.io, which resolves without anyone's help.
 #
 # Know what you are publishing. This app is not the annotation UI:
 #
@@ -17,7 +17,7 @@
 #     own filesystem paths. The lists do not gate reading. If that is not
 #     acceptable on a public name, put auth_basic below in front of the whole
 #     vhost, or keep this on localhost and reach it over an SSH tunnel:
-#     ssh -N -L 8200:127.0.0.1:8200 <this host>
+#     ssh -N -L 8222:127.0.0.1:8222 <this host>
 
 server {
     server_name diar-dis.blaze.vn;
@@ -29,7 +29,7 @@ server {
     client_max_body_size 1200M;
 
     location / {
-        proxy_pass http://127.0.0.1:8200;
+        proxy_pass http://127.0.0.1:8222;
 
         proxy_set_header Host              $host;
         proxy_set_header X-Real-IP         $remote_addr;
