@@ -138,11 +138,6 @@ table.entries td { vertical-align: middle; }
   border-radius: 8px;
 }
 .notice strong { color: var(--warn); }
-.notice code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 12px;
-}
-.notice-id { display: inline-block; margin-top: 5px; color: var(--text); user-select: all; }
 
 .blocked {
   display: grid;

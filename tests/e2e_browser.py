@@ -207,9 +207,12 @@ with sync_playwright() as playwright:
           page.inner_text("#rolePill"))
     check("a read-only viewer can still open and read an entry",
           page.locator("#entriesBody tr").count() > 0)
-    check("and is told the id to hand to the admin",
-          CLIENT_ID in page.inner_text("#accessNotice"),
-          page.inner_text("#accessNotice"))
+    notice = " ".join(page.inner_text("#accessNotice").split())
+    check("and is told that nothing they change will be saved",
+          notice == "Read-only. You can open and play everything here, "
+                    "and nothing you change will be saved."
+          and CLIENT_ID not in notice,
+          notice)
     page.screenshot(path=SHOTS / "09-readonly.png", full_page=True)
 
     open_entry(page, "orphan")

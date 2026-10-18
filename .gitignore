@@ -8,3 +8,5 @@ __pycache__/
 
 # Browser E2E screenshots
 .e2e-shots/
+*.temp
+*.tmp

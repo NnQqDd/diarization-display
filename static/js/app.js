@@ -179,12 +179,9 @@ function applyAccess(info) {
   if (state.canEdit) {
     notice.hidden = true;
   } else {
-    // The id, and nothing about where it goes: whoever can act on it knows,
-    // and everyone else is only being shown a stranger's filesystem.
     notice.innerHTML =
       '<strong>Read-only.</strong> You can open and play everything here, and ' +
-      'nothing you change will be saved.' +
-      `<br><code class="notice-id">${escapeHtml(id)},your name</code>`;
+      'nothing you change will be saved.';
     notice.hidden = false;
   }
 
@@ -210,7 +207,7 @@ function copyClientId() {
     // Clipboard refused (an insecure origin, usually). Select it instead, so
     // the id can still be copied by hand.
     const range = document.createRange();
-    range.selectNodeContents($('accessNotice').querySelector('.notice-id') || chip);
+    range.selectNodeContents(chip);
     getSelection().removeAllRanges();
     getSelection().addRange(range);
   });
