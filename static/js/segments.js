@@ -138,7 +138,7 @@ export class SegmentTable {
       this.textHeadEl.textContent = this.hasTranscript
         ? 'Transcript'
         : 'Transcript (none yet)';
-      this.textHeadEl.title = 'Optional, and editable — type one here';
+      this.textHeadEl.title = 'Optional, and editable - type one here';
     }
 
     this.setSelected(this.selectedId);
@@ -302,7 +302,7 @@ export class SegmentTable {
         return;
       }
       if (action === 'delete') {
-        if (this.locked) return;
+        if (this.locked || document.body.classList.contains('is-display')) return;
         // Splice in place rather than rebinding: the app holds the same array,
         // and a fresh one here would leave the deleted segment alive over there
         // -- still validated, still scored, still saved.

@@ -6,7 +6,7 @@
 <title>Diarization Dataset</title>
 <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/css/app.css">
-<link rel="stylesheet" href="/static/css/display.css">
+<link rel="stylesheet" href="/static/css/display.css?v=6">
 </head>
 <body>
 
@@ -85,7 +85,7 @@
           <svg class="dropzone-icon" viewBox="0 0 24 24" aria-hidden="true">
             <path d="M9 18V5l12-2v13M9 13l12-2"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
           </svg>
-          <span class="dropzone-main">Audio — drop it here, or <u>browse</u></span>
+          <span class="dropzone-main">Audio - drop it here, or <u>browse</u></span>
           <span class="dropzone-sub" id="audioChosen">WAV, MP3, FLAC, OGG, M4A, WebM</span>
         </label>
 
@@ -94,8 +94,8 @@
           <svg class="dropzone-icon" viewBox="0 0 24 24" aria-hidden="true">
             <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/>
           </svg>
-          <span class="dropzone-main">Annotation — drop the <code>.txt</code> here, or <u>browse</u></span>
-          <span class="dropzone-sub" id="textChosen">One <code>speaker start end transcript</code> per line — not JSON</span>
+          <span class="dropzone-main">Annotation - drop the <code>.txt</code> here, or <u>browse</u></span>
+          <span class="dropzone-sub" id="textChosen">One <code>speaker start end transcript</code> per line - not JSON</span>
         </label>
       </div>
 
@@ -231,7 +231,7 @@
   <section class="card" id="speakersCard" hidden>
     <div class="card-head">
       <h2><span class="step">4</span> Speakers <span class="count" id="speakerCount"></span></h2>
-      <span class="pill" title="Nothing here is required — an empty field is saved as nothing">optional</span>
+      <span class="pill" title="Nothing here is required - an empty field is saved as nothing">optional</span>
     </div>
     <div class="card-body no-pad">
       <div class="table-scroll">
@@ -265,7 +265,7 @@
   <section class="card" id="metaCard" hidden>
     <div class="card-head">
       <h2><span class="step">5</span> Entry metadata</h2>
-      <span class="pill readonly" title="Recorded when the annotation was saved — not editable here">read-only</span>
+      <span class="pill readonly" title="Recorded when the annotation was saved - not editable here">read-only</span>
     </div>
     <div class="card-body">
       <dl class="meta-grid" id="metaGrid"></dl>
@@ -280,6 +280,6 @@
 
 <div class="toast-stack" id="toasts" aria-live="polite"></div>
 
-<script type="module" src="/static/js/app.js"></script>
+<script type="module" src="/static/js/app.js?v=6"></script>
 </body>
 </html>

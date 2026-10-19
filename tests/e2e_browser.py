@@ -301,7 +301,8 @@ with sync_playwright() as playwright:
 
     page.click("#saveBtn")
     page.wait_for_function(
-        "() => /no unsaved edits/.test(document.getElementById('saveStatus').textContent)",
+        "() => { const s = document.getElementById('saveStatus').textContent.trim();"
+        " return s && !/unsaved|Not in the dataset|Fix the/.test(s); }",
         timeout=30_000)
     saved = (DATASET / "mixed.txt").read_text()
     # Not the first line: the segment added above starts earlier, and the file
@@ -333,7 +334,8 @@ with sync_playwright() as playwright:
     check("the scratch edit took", not page.is_disabled("#revertBtn"))
     page.click("#revertBtn")
     page.wait_for_function(
-        "() => /no unsaved edits/.test(document.getElementById('saveStatus').textContent)",
+        "() => { const s = document.getElementById('saveStatus').textContent.trim();"
+        " return s && !/unsaved|Not in the dataset|Fix the/.test(s); }",
         timeout=30_000)
     check("revert threw the edit away and re-read the file",
           speaker_box().input_value() == on_disk,
@@ -389,7 +391,8 @@ with sync_playwright() as playwright:
     before = {p.name for p in DATASET.iterdir()}
     page.click("#saveBtn")
     page.wait_for_function(
-        "() => /no unsaved edits/.test(document.getElementById('saveStatus').textContent)",
+        "() => { const s = document.getElementById('saveStatus').textContent.trim();"
+        " return s && !/unsaved|Not in the dataset|Fix the/.test(s); }",
         timeout=60_000)
     new_files = {p.name for p in DATASET.iterdir()} - before
     check("filing the pair wrote a full entry, audio included",

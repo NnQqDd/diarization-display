@@ -23,9 +23,9 @@ import {
 } from './annotation.js';
 import { api } from './api.js';
 import { clientId, mirrorToCookie } from './identity.js';
-import { SegmentTable } from './segments.js';
-import { SpeakerTable } from './speakers.js';
-import { Waveform } from './waveform.js';
+import { SegmentTable } from './segments.js?v=6';
+import { SpeakerTable } from './speakers.js?v=6';
+import { Waveform } from './waveform.js?v=6';
 
 const $ = (id) => document.getElementById(id);
 
@@ -179,7 +179,7 @@ function applyAccess(info) {
   chip.hidden = false;
   chip.textContent = shorten(id, 8);
   chip.dataset.clientId = id;
-  chip.title = `${id}\nClick to copy — this is the line for whitelist.csv`;
+  chip.title = `${id}\nClick to copy - this is the line for whitelist.csv`;
 
   const notice = $('accessNotice');
   if (state.canEdit) {
@@ -557,7 +557,7 @@ async function useAudioBlob(blob) {
   } catch (error) {
     if (state.objectUrl !== url) return;
     warnAudio(
-      `The waveform could not be drawn (${error.message}) — playback and ` +
+      `The waveform could not be drawn (${error.message}) - playback and ` +
       'editing still work.',
     );
   } finally {
@@ -602,7 +602,7 @@ function showProblems(problems) {
     `<strong>${problems.length} line${problems.length === 1 ? '' : 's'} could not be read` +
     ' and are not in the table below.</strong> Saving will drop them.<br>' +
     problems.slice(0, 8).map((problem) =>
-      `<code>line ${problem.line}: ${escapeHtml(problem.text.slice(0, 120))}</code> — ` +
+      `<code>line ${problem.line}: ${escapeHtml(problem.text.slice(0, 120))}</code> - ` +
       `${escapeHtml(problem.reason)}`).join('<br>') +
     (problems.length > 8 ? `<br>…and ${problems.length - 8} more.` : '');
 }
@@ -727,7 +727,7 @@ async function openPair() {
     toast(
       'Pair opened',
       `<code>${escapeHtml(file.name)}</code><br>` +
-      `${parsed.segments.length} segments — press <strong>Add to dataset</strong> to file it.`,
+      `${parsed.segments.length} segments - press <strong>Add to dataset</strong> to file it.`,
       'ok',
     );
   } catch (error) {
@@ -960,7 +960,7 @@ function addSegment() {
     toast(
       'No room for another segment',
       `<span class="toast-note">${escapeHtml(speaker)} already speaks for the ` +
-        'whole file. Retime or delete one of its segments first — a speaker ' +
+        'whole file. Retime or delete one of its segments first - a speaker ' +
         'cannot overlap itself.</span>',
       'bad',
     );
@@ -1032,7 +1032,7 @@ function onAnnotationChanged({ reorder = false } = {}) {
 
   const status = $('saveStatus');
   if (!state.canEdit && dirty) {
-    status.textContent = 'Read-only — this browser cannot save. Your edits are '
+    status.textContent = 'Read-only - this browser cannot save. Your edits are '
       + 'only on this screen.';
     status.className = 'foot-status bad';
   } else if (invalid) {
@@ -1045,7 +1045,7 @@ function onAnnotationChanged({ reorder = false } = {}) {
     status.textContent = 'Unsaved edits.';
     status.className = 'foot-status dirty';
   } else if (state.stem) {
-    status.textContent = `${state.stem} — no unsaved edits.`;
+    status.textContent = state.stem;
     status.className = 'foot-status';
   } else {
     status.textContent = '';
@@ -1191,7 +1191,7 @@ async function removeEntry() {
       result.removed.map((name) => `<code>${escapeHtml(name)}</code>`).join('<br>') +
         (keepsAudio
           ? '<span class="toast-note">Its audio was already in the dataset, so ' +
-            'it was left in place — and is work waiting to be annotated ' +
+            'it was left in place - and is work waiting to be annotated ' +
             'again.</span>'
           : ''),
       'ok',
@@ -1230,7 +1230,7 @@ function closeOpen() {
   $('textDrop').classList.remove('is-set');
   $('audioChosen').textContent = 'WAV, MP3, FLAC, OGG, M4A, WebM';
   $('textChosen').innerHTML =
-    'One <code>speaker start end transcript</code> per line — not JSON';
+    'One <code>speaker start end transcript</code> per line - not JSON';
   updatePairButton();
   renderEntries();
 }

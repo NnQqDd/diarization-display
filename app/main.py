@@ -114,7 +114,12 @@ async def _access_control(request: Request, call_next):
             }},
             headers=NO_STORE,
         )
-    return await call_next(request)
+    response = await call_next(request)
+    # The page itself is already uncached. The modules it imports were not,
+    # so a refresh could keep an old segments table — including its delete button.
+    if request.url.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @app.get("/api/access")

@@ -132,7 +132,8 @@ table.entries td { vertical-align: middle; }
 .foot-status.dirty { color: var(--warn); }
 
 /* Display mode: a viewer can play and read, and cannot change the annotation. */
-body.is-display #segmentsTable th.col-actions { display: none; }
+body.is-display #segmentsTable th.col-actions,
+body.is-display #segmentsTable [data-action="delete"] { display: none !important; }
 body.is-display .cell-input,
 body.is-display .cell-input:hover,
 body.is-display .cell-input:focus {
