@@ -216,12 +216,13 @@ with sync_playwright() as playwright:
     page.screenshot(path=SHOTS / "09-readonly.png", full_page=True)
 
     open_entry(page, "orphan")
-    page.fill('#segmentsBody tr:first-child [data-field="text"]', "a read-only edit")
-    page.press('#segmentsBody tr:first-child [data-field="text"]', "Enter")
-    page.wait_for_timeout(300)
-    check("editing is possible but Save is not",
-          page.locator("#saveBtn").is_disabled())
-    check("and Delete is not either", page.locator("#deleteBtn").is_disabled())
+    text = page.locator('#segmentsBody tr:first-child [data-field="text"]')
+    check("segment text cannot be edited", text.get_attribute("readonly") is not None)
+    check("and the waveform edges are not draggable",
+          page.evaluate("document.body.classList.contains('is-display')"))
+    check("Save is not offered", page.is_hidden("#saveBtn"))
+    check("Revert is not offered", page.is_hidden("#revertBtn"))
+    check("and Delete is not either", page.is_hidden("#deleteBtn"))
 
     # The buttons are the polite half. This is the half that matters.
     orphan_before = (DATASET / "orphan.txt").read_text()

@@ -67,7 +67,7 @@
     <div class="card-foot">
       <div class="foot-status" id="browseStatus"></div>
       <div class="foot-actions">
-        <button type="button" class="btn ghost" id="pairToggle">Upload a pair instead</button>
+        <button type="button" class="btn ghost" id="pairToggle" hidden>Upload a pair instead</button>
       </div>
     </div>
   </section>
@@ -184,7 +184,7 @@
           <input type="checkbox" id="msToggle" checked>
           <span title="Show and edit hh:mm:ss.mmm instead of whole seconds">ms precision</span>
         </label>
-        <button type="button" class="btn ghost" id="addSegment">+ Add segment</button>
+        <button type="button" class="btn ghost" id="addSegment" hidden>+ Add segment</button>
       </div>
     </div>
     <div class="card-body no-pad">
@@ -210,16 +210,16 @@
     <div class="card-foot">
       <div class="foot-status" id="saveStatus"></div>
       <div class="foot-actions">
-        <button type="button" class="btn danger" id="deleteBtn" disabled>
+        <button type="button" class="btn danger" id="deleteBtn" hidden disabled>
           <span class="btn-label">Delete entry</span>
           <span class="spinner" hidden></span>
         </button>
-        <button type="button" class="btn ghost" id="revertBtn" disabled
+        <button type="button" class="btn ghost" id="revertBtn" hidden disabled
                 title="Throw away every edit and re-read this entry from disk">
           <span class="btn-label">Revert</span>
           <span class="spinner" hidden></span>
         </button>
-        <button type="button" class="btn primary" id="saveBtn" disabled>
+        <button type="button" class="btn primary" id="saveBtn" hidden disabled>
           <span class="btn-label">Save changes</span>
           <span class="spinner" hidden></span>
         </button>

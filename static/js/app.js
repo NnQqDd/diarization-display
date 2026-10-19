@@ -78,6 +78,12 @@ const state = {
 let waveform = null;
 let table = null;
 let speakers = null;
+// Bumped whenever the open audio is released, so a fetch still in flight
+// cannot attach itself to the entry that replaced it.
+let audioToken = 0;
+// The entry request itself is separate: a click on a missing row has to
+// beat an earlier click whose detail has not come back yet.
+let openToken = 0;
 
 /* ------------------------------------------------------------------ startup */
 
@@ -184,6 +190,16 @@ function applyAccess(info) {
       'nothing you change will be saved.';
     notice.hidden = false;
   }
+
+  // Display mode: look and listen, and leave the annotation as it was opened.
+  document.body.classList.toggle('is-display', !state.canEdit);
+  for (const id of ['deleteBtn', 'revertBtn', 'saveBtn', 'addSegment', 'pairToggle']) {
+    $(id).hidden = !state.canEdit;
+  }
+  if (!state.canEdit) showPair(false);
+  table.setLocked(!state.canEdit);
+  speakers.setLocked(!state.canEdit);
+  waveform.setLocked(!state.canEdit);
 
   onAnnotationChanged({ reorder: false });
 }
@@ -394,11 +410,13 @@ function showPair(on) {
 
 async function openEntry(stem) {
   if (!confirmDiscard()) return;
+  const token = ++openToken;
 
   $('browseStatus').textContent = `Opening ${stem}…`;
   $('browseStatus').className = 'foot-status';
   try {
     const detail = await api.entry(stem);
+    if (token !== openToken) return;
     adopt({
       stem: detail.stem,
       source: 'dataset',
@@ -414,8 +432,9 @@ async function openEntry(stem) {
     renderEntries();   // repaint so the open row is highlighted
 
     if (detail.hasAudio) await loadAudioFrom(api.audioUrl(detail.stem));
-    else showNoAudio(detail);
+    else showNoAudio();
   } catch (error) {
+    if (token !== openToken) return;
     $('browseStatus').textContent = error.message;
     $('browseStatus').className = 'foot-status bad';
     toast('Could not open that entry', escapeHtml(error.message), 'bad');
@@ -475,30 +494,57 @@ function adopt({ stem, source, meta, audioIsUpload, segments, annotationEnd,
   syncWaveform();
   waveform.setTime(0);
   onAnnotationChanged({ reorder: false });
+
+  // After the caller repaints the list. A scroll started before that
+  // repaint is thrown away, and the waveform stays below the entries.
+  requestAnimationFrame(() => {
+    $('playerCard').scrollIntoView({ block: 'start' });
+  });
 }
 
 /** Fetch once, then use the same bytes for both the waveform and the player. */
 async function loadAudioFrom(url) {
+  const token = ++audioToken;
   $('waveLoading').hidden = false;
   $('audioMissing').hidden = true;
 
   try {
     const response = await fetch(url);
+    if (token !== audioToken) return;
     if (!response.ok) throw new Error(`Could not load the audio (HTTP ${response.status}).`);
     const blob = await response.blob();
+    if (token !== audioToken) return;
     await useAudioBlob(blob);
   } catch (error) {
+    if (token !== audioToken) return;
     $('waveLoading').hidden = true;
     warnAudio(`${error.message} The annotation is still editable.`);
+  } finally {
+    if (token === audioToken) $('waveLoading').hidden = true;
   }
 }
 
 async function useAudioBlob(blob) {
-  state.objectUrl = URL.createObjectURL(blob);
-  $('audio').src = state.objectUrl;
+  const url = URL.createObjectURL(blob);
+  state.objectUrl = url;
+  $('audio').src = url;
 
   try {
     const decoded = await waveform.load(blob);
+    // Unload, or a newer file, won while this one was decoding.
+    if (decoded == null) {
+      if (state.objectUrl === url) {
+        URL.revokeObjectURL(url);
+        state.objectUrl = null;
+        const audio = $('audio');
+        audio.pause();
+        audio.removeAttribute('src');
+        audio.load();
+      } else {
+        URL.revokeObjectURL(url);
+      }
+      return;
+    }
     // Trust the decoder over the sidecar: it measured the file in front of it.
     if (decoded > 0) {
       state.duration = decoded;
@@ -509,22 +555,22 @@ async function useAudioBlob(blob) {
     syncWaveform();
     onAnnotationChanged({ reorder: false });
   } catch (error) {
+    if (state.objectUrl !== url) return;
     warnAudio(
       `The waveform could not be drawn (${error.message}) — playback and ` +
       'editing still work.',
     );
   } finally {
-    $('waveLoading').hidden = true;
+    if (state.objectUrl === url) $('waveLoading').hidden = true;
   }
 }
 
-function showNoAudio(detail) {
-  const where = detail.originalFilename ? ` (${detail.originalFilename})` : '';
-  warnAudio(
-    `No audio for this entry${where}: the dataset holds no copy and nothing on ` +
-    'the shelf matches its name. Times are being checked against the length ' +
-    'recorded when it was saved.',
-  );
+function showNoAudio() {
+  // The previous entry's peaks would otherwise stay on the canvas, because
+  // releasing the <audio> element does not clear the decoded strip.
+  waveform.unload();
+  $('waveLoading').hidden = true;
+  warnAudio('No audio for this entry');
 }
 
 function warnAudio(message) {
@@ -534,6 +580,7 @@ function warnAudio(message) {
 }
 
 function releaseAudio() {
+  audioToken += 1;
   const audio = $('audio');
   audio.pause();
   audio.removeAttribute('src');
@@ -819,6 +866,7 @@ function editStep() {
 }
 
 function dragEdge(id, side, time, commit) {
+  if (!state.canEdit) return;
   const segment = state.segments.find((item) => item.id === id);
   if (!segment) return;
 
@@ -900,7 +948,7 @@ function freeSlot(speaker, from, step, length) {
 }
 
 function addSegment() {
-  if (!state.annotationEnd) return;
+  if (!state.canEdit || !state.annotationEnd) return;
   const audio = $('audio');
   const NEW_LENGTH = 1;
   const step = editStep();

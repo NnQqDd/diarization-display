@@ -47,8 +47,19 @@ export class SegmentTable {
     this.playingId = null;
     this.isPlaying = false;
     this.hasTranscript = false;
+    // Display until the server says this browser may edit. A viewer must
+    // not get a writable table in the gap before that answer arrives.
+    this.locked = true;
 
     this._bind();
+  }
+
+  /** Read-only rows: the text stays selectable, and nothing can be changed. */
+  setLocked(locked) {
+    locked = Boolean(locked);
+    if (this.locked === locked) return;
+    this.locked = locked;
+    this.render();
   }
 
   /* ---------------------------------------------------------------- state */
@@ -153,6 +164,7 @@ export class SegmentTable {
     swatch.className = 'swatch';
     swatch.style.background = speakerColor(segment.speaker);
     const speakerInput = input('cell-input speaker', segment.speaker, 'speaker');
+    speakerInput.readOnly = this.locked;
     speakerInput.setAttribute('list', 'speakerOptions');
     speakerInput.setAttribute('aria-label', 'Speaker');
     const speakerCell = document.createElement('div');
@@ -165,6 +177,7 @@ export class SegmentTable {
     for (const field of ['start', 'end']) {
       const cell = document.createElement('td');
       const box = input('cell-input time', timeFieldValue(segment, field, this.milliseconds), field);
+      box.readOnly = this.locked;
       box.setAttribute('inputmode', 'numeric');
       box.setAttribute('spellcheck', 'false');
       box.setAttribute('aria-label', field === 'start' ? 'Start time' : 'End time');
@@ -182,16 +195,19 @@ export class SegmentTable {
 
     const text = document.createElement('td');
     const textInput = input('cell-input', segment.text, 'text');
-    textInput.placeholder = 'Transcription…';
+    textInput.readOnly = this.locked;
+    textInput.placeholder = this.locked ? '' : 'Transcription…';
     textInput.setAttribute('aria-label', 'Transcript');
     text.appendChild(textInput);
     row.appendChild(text);
 
-    const actions = document.createElement('td');
-    actions.innerHTML =
-      '<button type="button" class="btn icon ghost danger" data-action="delete" ' +
-      'title="Delete segment" aria-label="Delete segment">✕</button>';
-    row.appendChild(actions);
+    if (!this.locked) {
+      const actions = document.createElement('td');
+      actions.innerHTML =
+        '<button type="button" class="btn icon ghost danger" data-action="delete" ' +
+        'title="Delete segment" aria-label="Delete segment">✕</button>';
+      row.appendChild(actions);
+    }
 
     // A single shared datalist keeps existing speaker names one keystroke away.
     if (!document.getElementById('speakerOptions')) {
@@ -230,6 +246,7 @@ export class SegmentTable {
   _bind() {
     // Typing: update the model and derived cells, but never re-render.
     this.tbody.addEventListener('input', (event) => {
+      if (this.locked) return;
       const box = event.target.closest('[data-field]');
       if (!box) return;
       const segment = this._find(box.closest('tr').dataset.id);
@@ -248,6 +265,7 @@ export class SegmentTable {
 
     // Committing an edit (blur or Enter): normalise the text and re-sort.
     this.tbody.addEventListener('change', (event) => {
+      if (this.locked) return;
       const box = event.target.closest('[data-field]');
       if (!box) return;
       const segment = this._find(box.closest('tr').dataset.id);
@@ -284,6 +302,7 @@ export class SegmentTable {
         return;
       }
       if (action === 'delete') {
+        if (this.locked) return;
         // Splice in place rather than rebinding: the app holds the same array,
         // and a fresh one here would leave the deleted segment alive over there
         // -- still validated, still scored, still saved.

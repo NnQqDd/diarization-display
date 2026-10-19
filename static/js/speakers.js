@@ -28,12 +28,22 @@ export class SpeakerTable {
     this.profiles = new Map();
     this.labels = [];
     this.stats = new Map();
+    this.locked = true;
 
     this._bind();
   }
 
+  /** Gender and language follow the segments: display-only until editing is granted. */
+  setLocked(locked) {
+    locked = Boolean(locked);
+    if (this.locked === locked) return;
+    this.locked = locked;
+    this.render();
+  }
+
   _bind() {
     this.tbody.addEventListener('input', (event) => {
+      if (this.locked) return;
       const box = event.target.closest('[data-field]');
       if (!box) return;
       const label = box.closest('tr')?.dataset.speaker;
@@ -141,7 +151,8 @@ export class SpeakerTable {
       box.className = 'cell-input';
       box.dataset.field = field;
       box.value = entry[field] || '';
-      box.placeholder = 'Optional…';
+      box.readOnly = this.locked;
+      box.placeholder = this.locked ? '' : 'Optional…';
       box.setAttribute('aria-label', `${label} ${field}`);
       box.setAttribute('list', `${field}Options`);
       td.appendChild(box);

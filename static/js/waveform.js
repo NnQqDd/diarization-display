@@ -58,31 +58,73 @@ export class Waveform {
     this.drag = null;
     this.hoverEdge = null;
     this.frame = null;
+    // Segment edges stay put until this browser is allowed to edit.
+    this.locked = true;
+    // Bumped on every load and unload, so a decode that finishes after the
+    // strip was cleared cannot paint itself back on.
+    this.generation = 0;
 
     this._bindEvents();
   }
 
   /* ---------------------------------------------------------------- audio */
 
-  /** Decode `file` and build the peak array. Returns the decoded duration. */
+  /**
+   * Decode `file` and build the peak array. Returns the decoded duration,
+   * or null when a newer load or an unload won the race.
+   */
   async load(file) {
+    const generation = ++this.generation;
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
     if (!AudioCtx) throw new Error('This browser has no Web Audio support.');
 
     const buffer = await file.arrayBuffer();
+    if (generation !== this.generation) return null;
     const context = new AudioCtx();
     let decoded;
     try {
       decoded = await context.decodeAudioData(buffer);
+    } catch (error) {
+      if (generation !== this.generation) return null;
+      throw error;
     } finally {
       context.close();
     }
+    if (generation !== this.generation) return null;
 
     this.duration = decoded.duration;
     this.peaks = buildPeaks(decoded);
     this.time = 0;
     this.openingView();
     return this.duration;
+  }
+
+  /** Refuse edge drags. Seeking and playback are unchanged. */
+  setLocked(locked) {
+    this.locked = Boolean(locked);
+    if (this.locked) {
+      this.hoverEdge = null;
+      this.drag = this.drag && this.drag.kind === 'edge' ? null : this.drag;
+      this.canvas.classList.remove('is-resizing');
+    }
+  }
+
+  /** Drop the decoded audio so the strip draws empty. */
+  unload() {
+    this.generation += 1;
+    this.duration = 0;
+    this.peaks = null;
+    this.time = 0;
+    this.segments = [];
+    this.selectedId = null;
+    this.pxPerSecond = 0;
+    this.drag = null;
+    this.hoverEdge = null;
+    this.canvas.classList.remove('is-resizing', 'is-grabbing');
+    this.spacerEl.style.width = '';
+    this.scrollEl.scrollLeft = 0;
+    if (this.ruler) this.ruler.innerHTML = '';
+    this.render();
   }
 
   /* ------------------------------------------------------------- geometry */
@@ -201,7 +243,7 @@ export class Waveform {
     this.canvas.addEventListener('pointerdown', (event) => {
       if (!this.duration || event.button !== 0) return;
       const time = this.timeAt(event.clientX);
-      const edge = this.edgeAt(event.clientX);
+      const edge = this.locked ? null : this.edgeAt(event.clientX);
 
       this.canvas.setPointerCapture(event.pointerId);
 
@@ -221,6 +263,7 @@ export class Waveform {
       if (!this.duration) return;
 
       if (!this.drag) {
+        if (this.locked) return;
         const edge = this.edgeAt(event.clientX);
         const changed = (edge && edge.side) !== (this.hoverEdge && this.hoverEdge.side);
         this.hoverEdge = edge;

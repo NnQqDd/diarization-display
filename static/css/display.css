@@ -3,6 +3,10 @@
    look like one product. Everything below is the entry browser and the
    metadata panel, which only exist here. */
 
+/* The top bar is sticky. scroll-margin on a card is ignored because .card
+   sets overflow: hidden, so the page itself keeps a gap under the bar. */
+html { scroll-padding-top: 56px; }
+
 /* Entry list --------------------------------------------------------------- */
 
 .filter-input {
@@ -15,6 +19,19 @@
 }
 .filter-input:focus { outline: none; border-color: var(--accent); }
 .filter-input::placeholder { color: var(--text-faint); }
+
+/* The dataset list scrolls inside the card. A long list otherwise pushes
+   the waveform and the segments off the bottom of the page. */
+#browseCard .table-scroll {
+  max-height: 360px;
+  overflow-y: auto;
+}
+/* border-collapse: collapse (from the shared table) keeps a sticky header
+   from sticking inside this scroller. */
+#browseCard table.entries {
+  border-collapse: separate;
+  border-spacing: 0;
+}
 
 table.entries tbody tr { cursor: pointer; }
 table.entries tbody tr:hover { background: var(--bg-raised); }
@@ -113,6 +130,16 @@ table.entries td { vertical-align: middle; }
 /* Unsaved edits ------------------------------------------------------------ */
 
 .foot-status.dirty { color: var(--warn); }
+
+/* Display mode: a viewer can play and read, and cannot change the annotation. */
+body.is-display #segmentsTable th.col-actions { display: none; }
+body.is-display .cell-input,
+body.is-display .cell-input:hover,
+body.is-display .cell-input:focus {
+  border-color: transparent;
+  background: transparent;
+  cursor: text;
+}
 
 /* Access ------------------------------------------------------------------- */
 
