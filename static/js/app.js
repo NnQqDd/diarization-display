@@ -23,7 +23,7 @@ import {
 } from './annotation.js';
 import { api } from './api.js';
 import { clientId, mirrorToCookie } from './identity.js';
-import { SegmentTable } from './segments.js?v=6';
+import { SegmentTable } from './segments.js?v=7';
 import { SpeakerTable } from './speakers.js?v=6';
 import { Waveform } from './waveform.js?v=6';
 

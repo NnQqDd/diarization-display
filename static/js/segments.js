@@ -198,6 +198,7 @@ export class SegmentTable {
     textInput.readOnly = this.locked;
     textInput.placeholder = this.locked ? '' : 'Transcription…';
     textInput.setAttribute('aria-label', 'Transcript');
+    keepTranscriptPlace(textInput);
     text.appendChild(textInput);
     row.appendChild(text);
 
@@ -279,7 +280,9 @@ export class SegmentTable {
       } else if (box.dataset.field === 'speaker') {
         box.value = segment.speaker;
       }
-      this.onChange({ reorder: true });
+      // The transcript does not decide row order. Rebuilding the table here
+      // would replace the input and snap a long line back to the start.
+      this.onChange({ reorder: box.dataset.field !== 'text' });
     });
 
     this.tbody.addEventListener('keydown', (event) => {
@@ -363,6 +366,19 @@ export class SegmentTable {
 }
 
 /* ------------------------------------------------------------------ helpers */
+
+/**
+ * A single-line input scrolls back to the first character when a click
+ * moves focus away. Remember where the reader was and put it back.
+ */
+function keepTranscriptPlace(box) {
+  box.addEventListener('blur', () => {
+    const left = box.scrollLeft;
+    requestAnimationFrame(() => {
+      box.scrollLeft = left;
+    });
+  });
+}
 
 function input(className, value, field) {
   const box = document.createElement('input');
